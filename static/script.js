@@ -19,15 +19,21 @@ function showAlert(el, type, msg) {
   setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
-function setLoading(btn, loading) {
+function setLoading(btn, loading, text = 'Saving…') {
   if (loading) {
     btn.dataset.orig = btn.innerHTML;
-    btn.innerHTML = '<span class="spinner"></span> Saving…';
+    btn.innerHTML = `<span class="spinner"></span> ${text}`;
     btn.disabled = true;
   } else {
     btn.innerHTML = btn.dataset.orig;
     btn.disabled = false;
   }
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
 }
 
 // ── Generic expense form handler ────────────────────────────────────────────
@@ -66,6 +72,7 @@ async function refreshTable(getUrl, tableId, totalId, countId) {
   if (!tbody) return;
 
   const data = await fetch(getUrl).then(r => r.json());
+  const type = tableId.includes('capex') ? 'capex' : 'opex';
 
   if (!data.length) {
     tbody.innerHTML = `<tr><td colspan="8">
@@ -86,16 +93,82 @@ async function refreshTable(getUrl, tableId, totalId, countId) {
         <td>${row.date}</td>
         <td>${esc(row.approved_by)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(row.notes||'—')}</td>
+        <td><button class="btn btn-danger btn-sm js-delete-btn" data-id="${row.id}" data-type="${type}">Delete</button></td>
       </tr>`).join('');
   }
 
   const total = data.reduce((s, r) => s + r.amount, 0);
-  if (totalId) document.getElementById(totalId).textContent = fmt(total);
-  if (countId) document.getElementById(countId).textContent = data.length + ' entr' + (data.length === 1 ? 'y' : 'ies');
+  if (totalId && document.getElementById(totalId)) document.getElementById(totalId).textContent = fmt(total);
+  if (countId && document.getElementById(countId)) document.getElementById(countId).textContent = data.length + ' entr' + (data.length === 1 ? 'y' : 'ies');
+  const summaryCount = document.getElementById('entry-count-summary');
+  if (summaryCount) summaryCount.textContent = data.length + ' entr' + (data.length === 1 ? 'y' : 'ies');
 }
 
-function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
+function initDeleteModal(expenseType, getEndpoint, tableId, totalId, countId) {
+  const modal = document.getElementById('delete-modal');
+  const closeBtn = document.getElementById('delete-modal-close');
+  const cancelBtn = document.getElementById('delete-cancel-btn');
+  const confirmBtn = document.getElementById('delete-confirm-btn');
+  const errorEl = document.getElementById('delete-error');
+  const nameInput = document.getElementById('delete-name');
+  const passwordInput = document.getElementById('delete-password');
+  if (!modal) return;
+
+  let selectedId = null;
+
+  const closeModal = () => {
+    modal.style.display = 'none';
+    selectedId = null;
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+    nameInput.value = '';
+    passwordInput.value = '';
+  };
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.js-delete-btn');
+    if (!btn || btn.dataset.type !== expenseType) return;
+    selectedId = btn.dataset.id;
+    modal.style.display = 'flex';
+    errorEl.style.display = 'none';
+  });
+
+  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  confirmBtn.addEventListener('click', async () => {
+    if (!selectedId) return;
+    setLoading(confirmBtn, true, 'Deleting…');
+    errorEl.style.display = 'none';
+
+    try {
+      const res = await fetch(`/api/delete_${expenseType}/${selectedId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deleted_by: nameInput.value.trim(),
+          password: passwordInput.value.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        errorEl.textContent = data.message || 'Unable to delete entry.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      closeModal();
+      await refreshTable(getEndpoint, tableId, totalId, countId);
+    } catch (err) {
+      errorEl.textContent = 'Network error. Please try again.';
+      errorEl.style.display = 'block';
+    } finally {
+      setLoading(confirmBtn, false);
+    }
+  });
 }

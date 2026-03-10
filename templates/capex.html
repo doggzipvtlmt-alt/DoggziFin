@@ -29,6 +29,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
       OPEX
     </a>
+    <a href="/logs" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      Deletion Logs
+    </a>
   </nav>
   <div class="sidebar-footer">
     <p>Doggzi Internal Finance<br>© 2024 All rights reserved.</p>
@@ -49,9 +53,7 @@
   <div class="content">
     <div class="page-grid">
 
-      <!-- Left: entries table -->
       <div>
-        <!-- Add Form -->
         <div class="card" style="margin-bottom:24px">
           <div class="card-header">
             <span class="card-title">Add CAPEX Entry</span>
@@ -61,7 +63,6 @@
             <div id="form-alert" class="alert" style="margin-bottom:16px"></div>
             <form id="capex-form" novalidate>
               <div class="form-grid">
-
                 <div class="field">
                   <label for="category">Category *</label>
                   <select name="category" id="category" required>
@@ -77,7 +78,6 @@
                     <option>Other Capital Asset</option>
                   </select>
                 </div>
-
                 <div class="field">
                   <label for="department">Department *</label>
                   <select name="department" id="department" required>
@@ -91,32 +91,26 @@
                     <option>Executive</option>
                   </select>
                 </div>
-
                 <div class="field full">
                   <label for="description">Description *</label>
                   <input type="text" name="description" id="description" placeholder="e.g. Commercial oven for Bangalore kitchen #2" required>
                 </div>
-
                 <div class="field">
                   <label for="amount">Amount (₹) *</label>
                   <input type="number" name="amount" id="amount" placeholder="0" min="1" step="0.01" required>
                 </div>
-
                 <div class="field">
                   <label for="date">Date *</label>
                   <input type="date" name="date" id="date" required>
                 </div>
-
                 <div class="field">
                   <label for="approved_by">Approved By *</label>
                   <input type="text" name="approved_by" id="approved_by" placeholder="e.g. Rohan Mehta" required>
                 </div>
-
                 <div class="field full">
                   <label for="notes">Notes</label>
                   <textarea name="notes" id="notes" placeholder="Optional: vendor name, invoice reference, or any context…"></textarea>
                 </div>
-
               </div>
               <div class="form-footer">
                 <button type="submit" class="btn btn-primary">
@@ -129,7 +123,6 @@
           </div>
         </div>
 
-        <!-- Entries table -->
         <div class="card">
           <div class="card-header">
             <span class="card-title">All CAPEX Entries</span>
@@ -146,6 +139,7 @@
                   <th>Date</th>
                   <th>Approved By</th>
                   <th>Notes</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="capex-tbody">
@@ -159,10 +153,11 @@
                     <td>{{ e.date }}</td>
                     <td>{{ e.approved_by }}</td>
                     <td style="color:var(--muted);font-size:12px">{{ e.notes or '—' }}</td>
+                    <td><button class="btn btn-danger btn-sm js-delete-btn" data-id="{{ e.id }}" data-type="capex">Delete</button></td>
                   </tr>
                   {% endfor %}
                 {% else %}
-                  <tr><td colspan="7">
+                  <tr><td colspan="8">
                     <div class="empty-state">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                       <p>No CAPEX entries yet. Add your first record above.</p>
@@ -175,7 +170,6 @@
         </div>
       </div>
 
-      <!-- Right: summary -->
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="summary-card">
           <div class="s-label">Total CAPEX Spent</div>
@@ -203,16 +197,36 @@
   </div>
 </div>
 
+<div id="delete-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <div class="card-header"><span class="card-title">Delete CAPEX Entry</span></div>
+    <div class="card-body">
+      <div class="field" style="margin-bottom:12px">
+        <label for="delete-name">Your Name</label>
+        <input type="text" id="delete-name" placeholder="Enter your name" required>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label for="delete-password">Password</label>
+        <input type="password" id="delete-password" placeholder="Enter password" required>
+      </div>
+      <div id="delete-error" class="alert error" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="delete-cancel-btn" class="btn btn-secondary" type="button">Cancel</button>
+        <button id="delete-confirm-btn" class="btn btn-danger" type="button">Delete</button>
+      </div>
+    </div>
+    <button id="delete-modal-close" class="modal-close" type="button">×</button>
+  </div>
+</div>
+
 <script src="/static/script.js"></script>
 <script>
-  // Set today as default date
   document.getElementById('date').valueAsDate = new Date();
 
   initExpenseForm('capex-form', '/api/add_capex', 'capex-tbody', 'total-display-dummy', 'entry-count');
+  initDeleteModal('capex', '/api/get_capex', 'capex-tbody', 'total-display', 'entry-count');
 
-  // Override to also update summary
   document.getElementById('capex-form').addEventListener('submit', async function handler(e) {
-    // handled by initExpenseForm, just update summary too
     setTimeout(async () => {
       const data = await fetch('/api/get_capex').then(r => r.json());
       const total = data.reduce((s,r) => s + r.amount, 0);
