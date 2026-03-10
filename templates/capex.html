@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doggzi Finance — CAPEX</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐾</text></svg>">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="brand">🐾 Doggzi</div>
+    <div class="tagline">Finance Control</div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Overview</div>
+    <a href="/" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </a>
+    <div class="nav-section-label">Expenses</div>
+    <a href="/capex" class="nav-link active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      CAPEX
+    </a>
+    <a href="/opex" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      OPEX
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <p>Doggzi Internal Finance<br>© 2024 All rights reserved.</p>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    <div>
+      <div class="topbar-title">CAPEX</div>
+      <div class="topbar-sub">Capital Expenditure — Long-term investments</div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge" style="background:#DBEAFE;color:#1D4ED8">Capital Expenditure</span>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="page-grid">
+
+      <!-- Left: entries table -->
+      <div>
+        <!-- Add Form -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <span class="card-title">Add CAPEX Entry</span>
+            <span style="font-size:12px;color:var(--muted)">Kitchen · Equipment · Tech · Infrastructure</span>
+          </div>
+          <div class="card-body">
+            <div id="form-alert" class="alert" style="margin-bottom:16px"></div>
+            <form id="capex-form" novalidate>
+              <div class="form-grid">
+
+                <div class="field">
+                  <label for="category">Category *</label>
+                  <select name="category" id="category" required>
+                    <option value="">Select category…</option>
+                    <option>Cloud Kitchen Setup</option>
+                    <option>Cooking Equipment</option>
+                    <option>Refrigeration Units</option>
+                    <option>Technology Infrastructure</option>
+                    <option>App Development</option>
+                    <option>Expansion Investment</option>
+                    <option>Furniture & Fixtures</option>
+                    <option>Vehicles</option>
+                    <option>Other Capital Asset</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="department">Department *</label>
+                  <select name="department" id="department" required>
+                    <option value="">Select department…</option>
+                    <option>Operations</option>
+                    <option>Technology</option>
+                    <option>Finance</option>
+                    <option>Marketing</option>
+                    <option>Supply Chain</option>
+                    <option>HR</option>
+                    <option>Executive</option>
+                  </select>
+                </div>
+
+                <div class="field full">
+                  <label for="description">Description *</label>
+                  <input type="text" name="description" id="description" placeholder="e.g. Commercial oven for Bangalore kitchen #2" required>
+                </div>
+
+                <div class="field">
+                  <label for="amount">Amount (₹) *</label>
+                  <input type="number" name="amount" id="amount" placeholder="0" min="1" step="0.01" required>
+                </div>
+
+                <div class="field">
+                  <label for="date">Date *</label>
+                  <input type="date" name="date" id="date" required>
+                </div>
+
+                <div class="field">
+                  <label for="approved_by">Approved By *</label>
+                  <input type="text" name="approved_by" id="approved_by" placeholder="e.g. Rohan Mehta" required>
+                </div>
+
+                <div class="field full">
+                  <label for="notes">Notes</label>
+                  <textarea name="notes" id="notes" placeholder="Optional: vendor name, invoice reference, or any context…"></textarea>
+                </div>
+
+              </div>
+              <div class="form-footer">
+                <button type="submit" class="btn btn-primary">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                  Add CAPEX Entry
+                </button>
+                <button type="reset" class="btn btn-secondary">Clear</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Entries table -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">All CAPEX Entries</span>
+            <span id="entry-count" style="font-size:12px;color:var(--muted)">{{ entries|length }} entr{{ 'y' if entries|length == 1 else 'ies' }}</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Department</th>
+                  <th>Date</th>
+                  <th>Approved By</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="capex-tbody">
+                {% if entries %}
+                  {% for e in entries %}
+                  <tr>
+                    <td><strong>{{ e.category }}</strong></td>
+                    <td>{{ e.description }}</td>
+                    <td class="amt">₹{{ "{:,.0f}".format(e.amount) }}</td>
+                    <td>{{ e.department }}</td>
+                    <td>{{ e.date }}</td>
+                    <td>{{ e.approved_by }}</td>
+                    <td style="color:var(--muted);font-size:12px">{{ e.notes or '—' }}</td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr><td colspan="7">
+                    <div class="empty-state">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                      <p>No CAPEX entries yet. Add your first record above.</p>
+                    </div>
+                  </td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: summary -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="summary-card">
+          <div class="s-label">Total CAPEX Spent</div>
+          <div class="s-value" id="total-display">₹{{ "{:,.0f}".format(total) }}</div>
+          <div class="s-count" id="entry-count-summary">{{ entries|length }} entr{{ 'y' if entries|length == 1 else 'ies' }}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">What is CAPEX?</span></div>
+          <div class="card-body">
+            <p style="font-size:13px;color:var(--muted);line-height:1.6">Capital Expenditure refers to funds spent on acquiring, upgrading, or maintaining long-term physical or intangible assets for Doggzi's cloud kitchen operations.</p>
+            <ul style="margin-top:12px;padding-left:16px;font-size:13px;color:var(--muted);line-height:2">
+              <li>Cloud kitchen setup</li>
+              <li>Cooking equipment</li>
+              <li>Refrigeration units</li>
+              <li>Technology infrastructure</li>
+              <li>App development</li>
+              <li>Expansion investments</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/static/script.js"></script>
+<script>
+  // Set today as default date
+  document.getElementById('date').valueAsDate = new Date();
+
+  initExpenseForm('capex-form', '/api/add_capex', 'capex-tbody', 'total-display-dummy', 'entry-count');
+
+  // Override to also update summary
+  document.getElementById('capex-form').addEventListener('submit', async function handler(e) {
+    // handled by initExpenseForm, just update summary too
+    setTimeout(async () => {
+      const data = await fetch('/api/get_capex').then(r => r.json());
+      const total = data.reduce((s,r) => s + r.amount, 0);
+      document.getElementById('total-display').textContent = '₹' + total.toLocaleString('en-IN');
+      document.getElementById('entry-count-summary').textContent =
+        data.length + ' entr' + (data.length === 1 ? 'y' : 'ies');
+    }, 300);
+  });
+</script>
+</body>
+</html>
