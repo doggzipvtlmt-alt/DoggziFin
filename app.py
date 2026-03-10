@@ -130,6 +130,11 @@ def logs_page():
     return render_template('logs.html')
 
 
+@app.route('/org-chart')
+def org_chart_page():
+    return render_template('org_chart.html')
+
+
 # ── API ────────────────────────────────────────────────────────────────────────
 
 REQUIRED = ['category', 'description', 'amount', 'department', 'date', 'approved_by']
