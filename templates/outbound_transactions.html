@@ -1,37 +1,7 @@
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Outbound Transactions</title><link rel="stylesheet" href="/static/style.css"></head>
-<body>
-<aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav">
-<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a><a href="/org-chart" class="nav-link">Organization Structure</a>
-<div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link">OPEX</a>
-<div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link active">Outbound Transactions</a><a href="/transaction-issues" class="nav-link">Transaction Issues</a>
-</nav></aside>
-<div class="main"><header class="topbar"><div><div class="topbar-title">Outbound Transactions</div></div></header><div class="content">
-<div id="transaction-alert" class="alert" style="margin-bottom:16px"></div>
-<form id="outbound-transaction-form" novalidate><p style="font-size:12px;color:var(--muted);margin-bottom:10px">Transaction ID is auto-generated (OUT-0001, OUT-0002, ...).</p><div class="form-grid">
-<div class="field"><label>vendor_id *</label><input name="vendor_id" required></div>
-<div class="field"><label>amount *</label><input type="number" name="amount" min="1" step="0.01" required></div>
-<div class="field"><label>payment_method *</label><input name="payment_method" required></div>
-<div class="field"><label>category *</label><select name="transaction_category"><option value="vendor_payment">vendor_payment</option><option value="salary">salary</option><option value="marketing">marketing</option><option value="refund">refund</option></select></div>
-<div class="field"><label>status *</label><select name="transaction_status"><option value="completed">completed</option><option value="pending">pending</option><option value="failed">failed</option><option value="refunded">refunded</option></select></div>
-<div class="field"><label>refund_reference</label><input name="refund_reference"></div>
-<div class="field full"><label>notes</label><textarea name="notes"></textarea></div>
-</div><div class="form-footer"><button class="btn btn-primary" type="submit">Add outbound transaction</button></div></form>
-
-<div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
-  <div class="field"><label>Transaction ID</label><input id="status-tx-id"></div>
-  <div class="field"><label>New status</label><select id="status-new-value"><option>completed</option><option>pending</option><option>failed</option><option>refunded</option></select></div>
-</div>
-<button id="update-status-btn" class="btn btn-secondary" style="margin-top:10px">Update status</button>
-
-<div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
-  <div class="field"><label>original_transaction_id</label><input id="refund-original-id"></div>
-    <div class="field"><label>refund_amount</label><input id="refund-amount" type="number" min="1" step="0.01"></div>
-  <div class="field"><label>payment_method</label><input id="refund-payment-method"></div>
-</div>
-<button id="record-refund-btn" class="btn btn-secondary" style="margin-top:10px">Record refund</button>
-
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Outbound Transactions</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav"><div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a><a href="/org-chart" class="nav-link">Organization Structure</a><div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link">OPEX</a><div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link active">Outbound Transactions</a><a href="/transaction-issues" class="nav-link">Transaction Issues</a><a href="/logs" class="nav-link">System Logs</a></nav></aside>
+<div class="main"><header class="topbar"><div><div class="topbar-title">Outbound Transactions</div></div></header><div class="content"><div id="transaction-alert" class="alert" style="margin-bottom:16px"></div>
+<div style="display:flex;gap:8px;align-items:end;margin-bottom:16px"><div class="field" style="max-width:220px"><label>Download user_id</label><input id="download-user-id"></div><button id="download-outbound-excel" class="btn btn-secondary" type="button">Download Excel</button></div>
+<form id="outbound-transaction-form" novalidate><div class="form-grid"><div class="field full"><label>Transaction ID *</label><div style="display:flex;gap:8px"><input id="transaction_id" name="transaction_id" placeholder="OUT-XXXX" readonly required><button id="generate-outbound-id" class="btn btn-secondary" type="button">Generate ID</button></div></div><div class="field"><label>vendor_id *</label><input name="vendor_id" required></div><div class="field"><label>amount *</label><input type="number" name="amount" min="1" step="0.01" required></div><div class="field"><label>payment_method *</label><input name="payment_method" required></div><div class="field"><label>category *</label><select name="transaction_category"><option value="vendor_payment">vendor_payment</option><option value="salary">salary</option><option value="marketing">marketing</option><option value="refund">refund</option></select></div><div class="field"><label>status *</label><select name="transaction_status"><option value="completed">completed</option><option value="pending">pending</option><option value="failed">failed</option><option value="refunded">refunded</option></select></div><div class="field"><label>refund_reference</label><input name="refund_reference"></div><div class="field full"><label>notes</label><textarea name="notes"></textarea></div></div><div class="form-footer"><button class="btn btn-primary" type="submit">Add outbound transaction</button></div></form>
 <div class="table-wrap" style="margin-top:24px"><table><thead><tr><th>ID</th><th>Category</th><th>Status</th><th>Amount</th><th>Vendor</th><th>Created</th></tr></thead><tbody id="transactions-tbody"></tbody></table></div>
-</div></div>
-<script src="/static/script.js"></script><script>initOutboundTransactionsModule();</script>
-</body></html>
+</div></div><script src="/static/script.js"></script><script>initOutboundTransactionsModule();</script></body></html>
