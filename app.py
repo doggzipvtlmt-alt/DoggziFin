@@ -21,6 +21,7 @@ _db = None
 REQUIRED_EXPENSE_FIELDS = ["category", "description", "amount", "department", "date", "approved_by"]
 ALLOWED_TRANSACTION_TYPES = {"inbound", "outbound"}
 ALLOWED_TRANSACTION_STATUS = {"completed", "pending", "failed", "refunded"}
+ALLOWED_ISSUE_STATUS = {"open", "investigating", "resolved"}
 
 
 def get_db():
@@ -36,7 +37,7 @@ def get_db():
 
 def init_collections(db):
     existing = set(db.list_collection_names())
-    for name in ["capex_expenses", "opex_expenses", "transactions", "deletion_logs"]:
+    for name in ["capex_expenses", "opex_expenses", "transactions", "transaction_issues", "deletion_logs"]:
         if name not in existing:
             db.create_collection(name)
 
@@ -118,12 +119,18 @@ def dashboard():
     total_outbound_expenses = sum(float(t.get("amount", 0)) for t in transactions if t.get("transaction_type") == "outbound")
 
     today = datetime.now(timezone.utc).date()
-    todays_revenue = 0
+    todays_inbound_revenue = 0
+    todays_outbound_payments = 0
     for t in transactions:
         created_at = t.get("created_at")
-        if isinstance(created_at, datetime) and t.get("transaction_type") == "inbound":
-            if created_at.date() == today:
-                todays_revenue += float(t.get("amount", 0))
+        if not isinstance(created_at, datetime) or created_at.date() != today:
+            continue
+        if t.get("transaction_type") == "inbound":
+            todays_inbound_revenue += float(t.get("amount", 0))
+        if t.get("transaction_type") == "outbound":
+            todays_outbound_payments += float(t.get("amount", 0))
+
+    net_revenue_today = todays_inbound_revenue - todays_outbound_payments
 
     pending_transactions = sum(1 for t in transactions if t.get("transaction_status") == "pending")
     failed_transactions = sum(1 for t in transactions if t.get("transaction_status") == "failed")
@@ -166,7 +173,9 @@ def dashboard():
         total_opex=total_opex,
         total_inbound_revenue=total_inbound_revenue,
         total_outbound_expenses=total_outbound_expenses,
-        todays_revenue=todays_revenue,
+        todays_inbound_revenue=todays_inbound_revenue,
+        todays_outbound_payments=todays_outbound_payments,
+        net_revenue_today=net_revenue_today,
         pending_transactions=pending_transactions,
         failed_transactions=failed_transactions,
         refunds_issued=refunds_issued,
@@ -192,6 +201,21 @@ def opex_page():
 @app.route("/logs")
 def logs_page():
     return render_template("logs.html")
+
+
+@app.route("/inbound-transactions")
+def inbound_transactions_page():
+    return render_template("inbound_transactions.html")
+
+
+@app.route("/outbound-transactions")
+def outbound_transactions_page():
+    return render_template("outbound_transactions.html")
+
+
+@app.route("/transaction-issues")
+def transaction_issues_page():
+    return render_template("transaction_issues.html")
 
 
 @app.route("/org-chart")
@@ -406,6 +430,50 @@ def record_refund():
     )
 
     return jsonify({"success": True, "message": "Refund recorded successfully"})
+
+
+@app.route("/api/add_transaction_issue", methods=["POST"])
+def add_transaction_issue():
+    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
+    required = ["issue_id", "transaction_id", "issue_type", "description", "reported_by"]
+    errors = [f"{field} is required" for field in required if not str(data.get(field, "")).strip()]
+    status = (data.get("status") or "open").strip().lower()
+    if status not in ALLOWED_ISSUE_STATUS:
+        errors.append("status must be open, investigating, or resolved")
+
+    if errors:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    get_db().transaction_issues.insert_one(
+        {
+            "issue_id": data["issue_id"],
+            "transaction_id": data["transaction_id"],
+            "issue_type": data["issue_type"],
+            "description": data["description"],
+            "reported_by": data["reported_by"],
+            "status": status,
+            "created_at": datetime.now(timezone.utc),
+        }
+    )
+    return jsonify({"success": True, "message": "Transaction issue created"})
+
+
+@app.route("/api/get_transaction_issues")
+def get_transaction_issues():
+    rows = list(get_db().transaction_issues.find({}).sort("created_at", -1))
+    return jsonify([serialize_doc(r) for r in rows])
+
+
+@app.route("/api/update_transaction_issue_status/<issue_id>", methods=["PUT"])
+def update_transaction_issue_status(issue_id):
+    status = (request.json or {}).get("status", "").strip().lower()
+    if status not in ALLOWED_ISSUE_STATUS:
+        return jsonify({"success": False, "message": "Invalid status"}), 400
+
+    result = get_db().transaction_issues.update_one({"issue_id": issue_id}, {"$set": {"status": status}})
+    if result.matched_count == 0:
+        return jsonify({"success": False, "message": "Issue not found"}), 404
+    return jsonify({"success": True, "message": "Issue status updated"})
 
 
 if __name__ == "__main__":

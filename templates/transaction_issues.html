@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Transaction Issues</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav">
+<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a>
+<div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link">OPEX</a>
+<div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link">Outbound Transactions</a><a href="/transaction-issues" class="nav-link active">Transaction Issues</a>
+</nav></aside>
+<div class="main"><header class="topbar"><div><div class="topbar-title">Transaction Issues</div></div></header><div class="content">
+<div id="issues-alert" class="alert" style="margin-bottom:16px"></div>
+<form id="issue-form" novalidate><div class="form-grid">
+<div class="field"><label>issue_id *</label><input name="issue_id" required></div>
+<div class="field"><label>transaction_id *</label><input name="transaction_id" required></div>
+<div class="field"><label>issue_type *</label><input name="issue_type" required></div>
+<div class="field"><label>reported_by *</label><input name="reported_by" required></div>
+<div class="field"><label>status</label><select name="status"><option value="open">open</option><option value="investigating">investigating</option><option value="resolved">resolved</option></select></div>
+<div class="field full"><label>description *</label><textarea name="description" required></textarea></div>
+</div><div class="form-footer"><button class="btn btn-primary" type="submit">Raise issue</button></div></form>
+
+<div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div class="field"><label>issue_id</label><input id="issue-status-id"></div>
+  <div class="field"><label>new status</label><select id="issue-status-value"><option value="open">open</option><option value="investigating">investigating</option><option value="resolved">resolved</option></select></div>
+</div>
+<button id="update-issue-status-btn" class="btn btn-secondary" style="margin-top:10px">Update issue status</button>
+
+<div class="table-wrap" style="margin-top:24px"><table><thead><tr><th>Issue ID</th><th>Transaction</th><th>Type</th><th>Status</th><th>Reported By</th><th>Created</th></tr></thead><tbody id="issues-tbody"></tbody></table></div>
+</div></div>
+<script src="/static/script.js"></script><script>initTransactionIssuesModule();</script>
+</body></html>
