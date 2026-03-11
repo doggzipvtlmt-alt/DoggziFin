@@ -1,269 +1,413 @@
 import os
-import sqlite3
-from datetime import datetime
-from flask import Flask, render_template, request, jsonify, g
+from datetime import datetime, timezone
+
+from bson import ObjectId
+from flask import Flask, jsonify, render_template, request
+from pymongo import MongoClient
 
 app = Flask(__name__)
-DATABASE = os.environ.get('DATABASE_PATH', 'doggzi.db')
+
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
+DEFAULT_MONGO_URI = (
+    f"mongodb+srv://doggzipvtlmt_db_user:{MONGO_PASSWORD}@cluster1.a3voff.mongodb.net/?retryWrites=true&w=majority"
+    if MONGO_PASSWORD
+    else None
+)
+MONGO_URI = os.getenv("MONGO_URI") or DEFAULT_MONGO_URI
+
+_client = None
+_db = None
+
+REQUIRED_EXPENSE_FIELDS = ["category", "description", "amount", "department", "date", "approved_by"]
+ALLOWED_TRANSACTION_TYPES = {"inbound", "outbound"}
+ALLOWED_TRANSACTION_STATUS = {"completed", "pending", "failed", "refunded"}
 
 
 def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
-    return db
+    global _client, _db
+    if _db is None:
+        if not MONGO_URI:
+            raise RuntimeError("MongoDB configuration missing. Set MONGO_URI or MONGO_PASSWORD.")
+        _client = MongoClient(MONGO_URI)
+        _db = _client["doggzi_finance"]
+        init_collections(_db)
+    return _db
 
 
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
+def init_collections(db):
+    existing = set(db.list_collection_names())
+    for name in ["capex_expenses", "opex_expenses", "transactions", "deletion_logs"]:
+        if name not in existing:
+            db.create_collection(name)
 
 
-def init_db():
-    with app.app_context():
-        db = get_db()
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS capex (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT NOT NULL,
-                description TEXT NOT NULL,
-                amount REAL NOT NULL,
-                department TEXT NOT NULL,
-                date TEXT NOT NULL,
-                approved_by TEXT NOT NULL,
-                notes TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS opex (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT NOT NULL,
-                description TEXT NOT NULL,
-                amount REAL NOT NULL,
-                department TEXT NOT NULL,
-                date TEXT NOT NULL,
-                approved_by TEXT NOT NULL,
-                notes TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS deletion_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                deleted_by TEXT NOT NULL,
-                entry_type TEXT NOT NULL,
-                entry_id INTEGER NOT NULL,
-                category TEXT NOT NULL,
-                description TEXT NOT NULL,
-                amount REAL NOT NULL,
-                department TEXT NOT NULL,
-                entry_date TEXT NOT NULL,
-                deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        db.commit()
+def serialize_doc(doc):
+    if not doc:
+        return doc
+    serialized = dict(doc)
+    if "_id" in serialized:
+        serialized["id"] = str(serialized.pop("_id"))
+    for key, value in list(serialized.items()):
+        if isinstance(value, datetime):
+            serialized[key] = value.isoformat()
+    return serialized
 
 
-# ── Pages ──────────────────────────────────────────────────────────────────────
-
-@app.route('/')
-def dashboard():
-    db = get_db()
-    total_capex = db.execute('SELECT COALESCE(SUM(amount),0) as total FROM capex').fetchone()['total']
-    total_opex  = db.execute('SELECT COALESCE(SUM(amount),0) as total FROM opex').fetchone()['total']
-
-    recent_capex = db.execute(
-        'SELECT *, "CAPEX" as type FROM capex ORDER BY date DESC LIMIT 5'
-    ).fetchall()
-    recent_opex = db.execute(
-        'SELECT *, "OPEX" as type FROM opex ORDER BY date DESC LIMIT 5'
-    ).fetchall()
-
-    recent = sorted(
-        [dict(r) for r in list(recent_capex) + list(recent_opex)],
-        key=lambda x: x['date'], reverse=True
-    )[:10]
-
-    # Monthly breakdown (last 6 months)
-    monthly = db.execute('''
-        SELECT strftime('%Y-%m', date) as month,
-               SUM(CASE WHEN type='capex' THEN amount ELSE 0 END) as capex,
-               SUM(CASE WHEN type='opex'  THEN amount ELSE 0 END) as opex
-        FROM (
-            SELECT date, amount, 'capex' as type FROM capex
-            UNION ALL
-            SELECT date, amount, 'opex'  as type FROM opex
-        )
-        GROUP BY month ORDER BY month DESC LIMIT 6
-    ''').fetchall()
-    monthly = [dict(m) for m in monthly][::-1]
-
-    return render_template('index.html',
-                           total_capex=total_capex,
-                           total_opex=total_opex,
-                           recent=recent,
-                           monthly=monthly)
-
-
-@app.route('/capex')
-def capex_page():
-    db = get_db()
-    entries = db.execute('SELECT * FROM capex ORDER BY date DESC').fetchall()
-    total   = db.execute('SELECT COALESCE(SUM(amount),0) as t FROM capex').fetchone()['t']
-    return render_template('capex.html', entries=[dict(e) for e in entries], total=total)
-
-
-@app.route('/opex')
-def opex_page():
-    db = get_db()
-    entries = db.execute('SELECT * FROM opex ORDER BY date DESC').fetchall()
-    total   = db.execute('SELECT COALESCE(SUM(amount),0) as t FROM opex').fetchone()['t']
-    return render_template('opex.html', entries=[dict(e) for e in entries], total=total)
-
-
-@app.route('/logs')
-def logs_page():
-    return render_template('logs.html')
-
-
-@app.route('/org-chart')
-def org_chart_page():
-    return render_template('org_chart.html')
-
-
-# ── API ────────────────────────────────────────────────────────────────────────
-
-REQUIRED = ['category', 'description', 'amount', 'department', 'date', 'approved_by']
-
-
-def validate(data):
-    errors = []
-    for field in REQUIRED:
-        if not data.get(field, '').strip():
-            errors.append(f'{field} is required')
+def parse_amount(value):
     try:
-        amt = float(data.get('amount', 0))
-        if amt <= 0:
-            errors.append('amount must be greater than 0')
+        amount = float(value)
     except (ValueError, TypeError):
-        errors.append('amount must be a valid number')
+        return None
+    return amount if amount > 0 else None
+
+
+def validate_expense(data):
+    errors = []
+    for field in REQUIRED_EXPENSE_FIELDS:
+        if not str(data.get(field, "")).strip():
+            errors.append(f"{field} is required")
+    if parse_amount(data.get("amount")) is None:
+        errors.append("amount must be a valid number greater than 0")
     return errors
 
 
-@app.route('/api/add_capex', methods=['POST'])
+def validate_transaction(data):
+    required = [
+        "transaction_id",
+        "amount",
+        "payment_method",
+        "transaction_type",
+        "transaction_category",
+        "transaction_status",
+    ]
+    errors = []
+    for field in required:
+        if not str(data.get(field, "")).strip():
+            errors.append(f"{field} is required")
+
+    if parse_amount(data.get("amount")) is None:
+        errors.append("amount must be a valid number greater than 0")
+
+    if data.get("transaction_type") not in ALLOWED_TRANSACTION_TYPES:
+        errors.append("transaction_type must be inbound or outbound")
+
+    if data.get("transaction_status") not in ALLOWED_TRANSACTION_STATUS:
+        errors.append("transaction_status must be completed, pending, failed, or refunded")
+
+    return errors
+
+
+def _find_expense_entries(collection_name):
+    db = get_db()
+    entries = list(db[collection_name].find({}, {"_id": 1, "category": 1, "description": 1, "amount": 1, "department": 1, "date": 1, "approved_by": 1, "notes": 1}).sort("date", -1))
+    return [serialize_doc(entry) for entry in entries]
+
+
+@app.route("/")
+def dashboard():
+    db = get_db()
+
+    capex_entries = list(db.capex_expenses.find({}, {"amount": 1, "date": 1, "description": 1}))
+    opex_entries = list(db.opex_expenses.find({}, {"amount": 1, "date": 1, "description": 1}))
+
+    total_capex = sum(float(row.get("amount", 0)) for row in capex_entries)
+    total_opex = sum(float(row.get("amount", 0)) for row in opex_entries)
+
+    transactions = list(db.transactions.find({}, {"amount": 1, "transaction_type": 1, "transaction_status": 1, "transaction_category": 1, "created_at": 1, "notes": 1, "transaction_id": 1}).sort("created_at", -1))
+    total_inbound_revenue = sum(float(t.get("amount", 0)) for t in transactions if t.get("transaction_type") == "inbound")
+    total_outbound_expenses = sum(float(t.get("amount", 0)) for t in transactions if t.get("transaction_type") == "outbound")
+
+    today = datetime.now(timezone.utc).date()
+    todays_revenue = 0
+    for t in transactions:
+        created_at = t.get("created_at")
+        if isinstance(created_at, datetime) and t.get("transaction_type") == "inbound":
+            if created_at.date() == today:
+                todays_revenue += float(t.get("amount", 0))
+
+    pending_transactions = sum(1 for t in transactions if t.get("transaction_status") == "pending")
+    failed_transactions = sum(1 for t in transactions if t.get("transaction_status") == "failed")
+    refunds_issued = sum(
+        float(t.get("amount", 0))
+        for t in transactions
+        if t.get("transaction_category") == "refund" and t.get("transaction_status") == "refunded"
+    )
+
+    recent = []
+    for row in capex_entries:
+        recent.append({"type": "CAPEX", "description": row.get("description", ""), "amount": float(row.get("amount", 0)), "date": row.get("date", "")})
+    for row in opex_entries:
+        recent.append({"type": "OPEX", "description": row.get("description", ""), "amount": float(row.get("amount", 0)), "date": row.get("date", "")})
+    for row in transactions[:10]:
+        recent.append(
+            {
+                "type": row.get("transaction_type", "transaction").upper(),
+                "description": row.get("notes") or row.get("transaction_id", "Transaction"),
+                "amount": float(row.get("amount", 0)),
+                "date": row.get("created_at").strftime("%Y-%m-%d") if isinstance(row.get("created_at"), datetime) else "",
+            }
+        )
+    recent = sorted(recent, key=lambda x: x.get("date", ""), reverse=True)[:10]
+
+    monthly_map = {}
+    for row in capex_entries:
+        month = (row.get("date") or "")[:7]
+        if month:
+            monthly_map.setdefault(month, {"month": month, "capex": 0, "opex": 0})["capex"] += float(row.get("amount", 0))
+    for row in opex_entries:
+        month = (row.get("date") or "")[:7]
+        if month:
+            monthly_map.setdefault(month, {"month": month, "capex": 0, "opex": 0})["opex"] += float(row.get("amount", 0))
+    monthly = [monthly_map[k] for k in sorted(monthly_map.keys())][-6:]
+
+    return render_template(
+        "index.html",
+        total_capex=total_capex,
+        total_opex=total_opex,
+        total_inbound_revenue=total_inbound_revenue,
+        total_outbound_expenses=total_outbound_expenses,
+        todays_revenue=todays_revenue,
+        pending_transactions=pending_transactions,
+        failed_transactions=failed_transactions,
+        refunds_issued=refunds_issued,
+        recent=recent,
+        monthly=monthly,
+    )
+
+
+@app.route("/capex")
+def capex_page():
+    entries = _find_expense_entries("capex_expenses")
+    total = sum(float(e.get("amount", 0)) for e in entries)
+    return render_template("capex.html", entries=entries, total=total)
+
+
+@app.route("/opex")
+def opex_page():
+    entries = _find_expense_entries("opex_expenses")
+    total = sum(float(e.get("amount", 0)) for e in entries)
+    return render_template("opex.html", entries=entries, total=total)
+
+
+@app.route("/logs")
+def logs_page():
+    return render_template("logs.html")
+
+
+@app.route("/org-chart")
+def org_chart_page():
+    return render_template("org_chart.html")
+
+
+@app.route("/api/add_capex", methods=["POST"])
 def add_capex():
-    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in request.json.items()}
-    errors = validate(data)
+    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
+    errors = validate_expense(data)
     if errors:
-        return jsonify({'success': False, 'errors': errors}), 400
-    db = get_db()
-    db.execute(
-        'INSERT INTO capex (category,description,amount,department,date,approved_by,notes) VALUES (?,?,?,?,?,?,?)',
-        (data['category'], data['description'], float(data['amount']),
-         data['department'], data['date'], data['approved_by'], data.get('notes', ''))
+        return jsonify({"success": False, "errors": errors}), 400
+
+    amount = parse_amount(data.get("amount"))
+    get_db().capex_expenses.insert_one(
+        {
+            "category": data["category"],
+            "description": data["description"],
+            "amount": amount,
+            "department": data["department"],
+            "date": data["date"],
+            "approved_by": data["approved_by"],
+            "notes": data.get("notes", ""),
+            "created_at": datetime.now(timezone.utc),
+        }
     )
-    db.commit()
-    return jsonify({'success': True, 'message': 'CAPEX entry added successfully'})
+    return jsonify({"success": True, "message": "CAPEX entry added successfully"})
 
 
-@app.route('/api/add_opex', methods=['POST'])
+@app.route("/api/add_opex", methods=["POST"])
 def add_opex():
-    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in request.json.items()}
-    errors = validate(data)
+    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
+    errors = validate_expense(data)
     if errors:
-        return jsonify({'success': False, 'errors': errors}), 400
-    db = get_db()
-    db.execute(
-        'INSERT INTO opex (category,description,amount,department,date,approved_by,notes) VALUES (?,?,?,?,?,?,?)',
-        (data['category'], data['description'], float(data['amount']),
-         data['department'], data['date'], data['approved_by'], data.get('notes', ''))
+        return jsonify({"success": False, "errors": errors}), 400
+
+    amount = parse_amount(data.get("amount"))
+    get_db().opex_expenses.insert_one(
+        {
+            "category": data["category"],
+            "description": data["description"],
+            "amount": amount,
+            "department": data["department"],
+            "date": data["date"],
+            "approved_by": data["approved_by"],
+            "notes": data.get("notes", ""),
+            "created_at": datetime.now(timezone.utc),
+        }
     )
-    db.commit()
-    return jsonify({'success': True, 'message': 'OPEX entry added successfully'})
+    return jsonify({"success": True, "message": "OPEX entry added successfully"})
 
 
-@app.route('/api/get_capex')
+@app.route("/api/get_capex")
 def get_capex():
-    db = get_db()
-    rows = db.execute('SELECT * FROM capex ORDER BY date DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify(_find_expense_entries("capex_expenses"))
 
 
-@app.route('/api/get_opex')
+@app.route("/api/get_opex")
 def get_opex():
-    db = get_db()
-    rows = db.execute('SELECT * FROM opex ORDER BY date DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify(_find_expense_entries("opex_expenses"))
 
 
-def _delete_expense_entry(entry_id, table_name, entry_type):
+def _delete_expense_entry(entry_id, collection_name, entry_type):
     data = request.json or {}
-    password = data.get('password', '')
-    deleted_by = (data.get('deleted_by') or '').strip()
+    password = data.get("password", "")
+    deleted_by = (data.get("deleted_by") or "").strip()
 
     if not deleted_by:
-        return jsonify({'success': False, 'message': 'Name is required to delete an entry'}), 400
+        return jsonify({"success": False, "message": "Name is required to delete an entry"}), 400
 
-    if password != '3344':
-        return jsonify({'success': False, 'message': 'Incorrect password'}), 403
+    if password != "3344":
+        return jsonify({"success": False, "message": "Incorrect password"}), 403
 
     db = get_db()
-    entry = db.execute(
-        f'SELECT id, category, description, amount, department, date FROM {table_name} WHERE id = ?',
-        (entry_id,)
-    ).fetchone()
+    try:
+        object_id = ObjectId(entry_id)
+    except Exception:
+        return jsonify({"success": False, "message": f"{entry_type} entry not found"}), 404
 
+    entry = db[collection_name].find_one({"_id": object_id})
     if not entry:
-        return jsonify({'success': False, 'message': f'{entry_type} entry not found'}), 404
+        return jsonify({"success": False, "message": f"{entry_type} entry not found"}), 404
 
-    db.execute(
-        '''
-        INSERT INTO deletion_logs (deleted_by, entry_type, entry_id, category, description, amount, department, entry_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''',
-        (
-            deleted_by,
-            entry_type,
-            entry['id'],
-            entry['category'],
-            entry['description'],
-            float(entry['amount']),
-            entry['department'],
-            entry['date']
-        )
+    db.deletion_logs.insert_one(
+        {
+            "deleted_by": deleted_by,
+            "entry_type": entry_type,
+            "entry_id": str(entry["_id"]),
+            "category": entry.get("category", ""),
+            "description": entry.get("description", ""),
+            "amount": float(entry.get("amount", 0)),
+            "department": entry.get("department", ""),
+            "entry_date": entry.get("date", ""),
+            "deleted_at": datetime.now(timezone.utc),
+        }
     )
-    db.execute(f'DELETE FROM {table_name} WHERE id = ?', (entry_id,))
-    db.commit()
+    db[collection_name].delete_one({"_id": object_id})
 
-    return jsonify({'success': True, 'message': f'{entry_type} entry deleted successfully'})
+    return jsonify({"success": True, "message": f"{entry_type} entry deleted successfully"})
 
 
-@app.route('/api/delete_capex/<int:entry_id>', methods=['DELETE'])
+@app.route("/api/delete_capex/<entry_id>", methods=["DELETE"])
 def delete_capex(entry_id):
-    return _delete_expense_entry(entry_id, 'capex', 'CAPEX')
+    return _delete_expense_entry(entry_id, "capex_expenses", "CAPEX")
 
 
-@app.route('/api/delete_opex/<int:entry_id>', methods=['DELETE'])
+@app.route("/api/delete_opex/<entry_id>", methods=["DELETE"])
 def delete_opex(entry_id):
-    return _delete_expense_entry(entry_id, 'opex', 'OPEX')
+    return _delete_expense_entry(entry_id, "opex_expenses", "OPEX")
 
 
-@app.route('/api/deletion_logs')
+@app.route("/api/deletion_logs")
 def deletion_logs():
-    if request.args.get('password', '') != '3344':
-        return jsonify({'success': False, 'message': 'Incorrect password'}), 403
+    if request.args.get("password", "") != "3344":
+        return jsonify({"success": False, "message": "Incorrect password"}), 403
 
-    db = get_db()
-    rows = db.execute('SELECT * FROM deletion_logs ORDER BY deleted_at DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
+    rows = list(get_db().deletion_logs.find({}).sort("deleted_at", -1))
+    return jsonify([serialize_doc(r) for r in rows])
 
 
-if __name__ == '__main__':
-    init_db()
+@app.route("/api/add_transaction", methods=["POST"])
+def add_transaction():
+    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
+    errors = validate_transaction(data)
+    if errors:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    document = {
+        "transaction_id": data["transaction_id"],
+        "order_id": data.get("order_id", ""),
+        "customer_id": data.get("customer_id", ""),
+        "vendor_id": data.get("vendor_id", ""),
+        "amount": parse_amount(data.get("amount")),
+        "payment_method": data["payment_method"],
+        "gateway_reference": data.get("gateway_reference", ""),
+        "transaction_type": data["transaction_type"],
+        "transaction_category": data["transaction_category"],
+        "transaction_status": data["transaction_status"],
+        "refund_reference": data.get("refund_reference", ""),
+        "created_at": datetime.now(timezone.utc),
+        "notes": data.get("notes", ""),
+    }
+    get_db().transactions.insert_one(document)
+
+    return jsonify({"success": True, "message": "Transaction added successfully"})
+
+
+@app.route("/api/get_transactions")
+def get_transactions():
+    tx_type = request.args.get("transaction_type", "").strip().lower()
+    query = {}
+    if tx_type in ALLOWED_TRANSACTION_TYPES:
+        query["transaction_type"] = tx_type
+
+    rows = list(get_db().transactions.find(query).sort("created_at", -1))
+    return jsonify([serialize_doc(r) for r in rows])
+
+
+@app.route("/api/update_transaction_status/<transaction_id>", methods=["PUT"])
+def update_transaction_status(transaction_id):
+    data = request.json or {}
+    new_status = (data.get("transaction_status") or "").strip().lower()
+    if new_status not in ALLOWED_TRANSACTION_STATUS:
+        return jsonify({"success": False, "message": "Invalid transaction_status"}), 400
+
+    result = get_db().transactions.update_one(
+        {"transaction_id": transaction_id},
+        {"$set": {"transaction_status": new_status}},
+    )
+    if result.matched_count == 0:
+        return jsonify({"success": False, "message": "Transaction not found"}), 404
+
+    return jsonify({"success": True, "message": "Transaction status updated"})
+
+
+@app.route("/api/record_refund", methods=["POST"])
+def record_refund():
+    data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
+    original_transaction_id = data.get("original_transaction_id", "")
+    refund_transaction_id = data.get("transaction_id", "")
+    amount = parse_amount(data.get("amount"))
+
+    if not original_transaction_id or not refund_transaction_id or amount is None:
+        return jsonify({"success": False, "message": "original_transaction_id, transaction_id and valid amount are required"}), 400
+
+    original = get_db().transactions.find_one({"transaction_id": original_transaction_id})
+    if not original:
+        return jsonify({"success": False, "message": "Original transaction not found"}), 404
+
+    get_db().transactions.insert_one(
+        {
+            "transaction_id": refund_transaction_id,
+            "order_id": original.get("order_id", ""),
+            "customer_id": original.get("customer_id", ""),
+            "vendor_id": "",
+            "amount": amount,
+            "payment_method": data.get("payment_method") or original.get("payment_method", ""),
+            "gateway_reference": data.get("gateway_reference", ""),
+            "transaction_type": "outbound",
+            "transaction_category": "refund",
+            "transaction_status": "refunded",
+            "refund_reference": original_transaction_id,
+            "created_at": datetime.now(timezone.utc),
+            "notes": data.get("notes", "Refund issued"),
+        }
+    )
+
+    get_db().transactions.update_one(
+        {"transaction_id": original_transaction_id},
+        {"$set": {"transaction_status": "refunded"}},
+    )
+
+    return jsonify({"success": True, "message": "Refund recorded successfully"})
+
+
+if __name__ == "__main__":
+    get_db()
     app.run(debug=True)
-
-init_db()
