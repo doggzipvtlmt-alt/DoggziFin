@@ -2,14 +2,13 @@
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Outbound Transactions</title><link rel="stylesheet" href="/static/style.css"></head>
 <body>
 <aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav">
-<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a>
+<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a><a href="/org-chart" class="nav-link">Organization Structure</a>
 <div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link">OPEX</a>
 <div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link active">Outbound Transactions</a><a href="/transaction-issues" class="nav-link">Transaction Issues</a>
 </nav></aside>
 <div class="main"><header class="topbar"><div><div class="topbar-title">Outbound Transactions</div></div></header><div class="content">
 <div id="transaction-alert" class="alert" style="margin-bottom:16px"></div>
-<form id="outbound-transaction-form" novalidate><div class="form-grid">
-<div class="field"><label>transaction_id *</label><input name="transaction_id" required></div>
+<form id="outbound-transaction-form" novalidate><p style="font-size:12px;color:var(--muted);margin-bottom:10px">Transaction ID is auto-generated (OUT-0001, OUT-0002, ...).</p><div class="form-grid">
 <div class="field"><label>vendor_id *</label><input name="vendor_id" required></div>
 <div class="field"><label>amount *</label><input type="number" name="amount" min="1" step="0.01" required></div>
 <div class="field"><label>payment_method *</label><input name="payment_method" required></div>
@@ -27,8 +26,7 @@
 
 <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
   <div class="field"><label>original_transaction_id</label><input id="refund-original-id"></div>
-  <div class="field"><label>refund_transaction_id</label><input id="refund-tx-id"></div>
-  <div class="field"><label>refund_amount</label><input id="refund-amount" type="number" min="1" step="0.01"></div>
+    <div class="field"><label>refund_amount</label><input id="refund-amount" type="number" min="1" step="0.01"></div>
   <div class="field"><label>payment_method</label><input id="refund-payment-method"></div>
 </div>
 <button id="record-refund-btn" class="btn btn-secondary" style="margin-top:10px">Record refund</button>

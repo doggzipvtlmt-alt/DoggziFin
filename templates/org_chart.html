@@ -1,548 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Doggzi Finance — Org Chart</title>
-<link rel="stylesheet" href="/static/style.css">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet" />
-<style>
-  .orgchart-wrap *, .orgchart-wrap *::before, .orgchart-wrap *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  .orgchart-wrap {
-    --cream:    #faf8f4;
-    --ink:      #1a1614;
-    --amber:    #e8a020;
-    --amber-lt: #fef3dc;
-    --teal:     #0e7c72;
-    --teal-lt:  #d6f0ed;
-    --coral:    #d94f3b;
-    --coral-lt: #fde8e5;
-    --slate:    #3d5a7a;
-    --slate-lt: #dde8f4;
-    --plum:     #6b3fa0;
-    --plum-lt:  #eddff8;
-    --moss:     #3d7a4f;
-    --moss-lt:  #d6edd e;
-    --line:     #d8d0c6;
-    --shadow:   0 4px 20px rgba(26,22,20,.07);
-    --shadow-h: 0 8px 32px rgba(26,22,20,.14);
-    --radius:   14px;
-    --radius-sm:8px;
-
-    font-family: 'DM Sans', sans-serif;
-    background: var(--cream);
-    color: var(--ink);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  .orgchart-wrap .chart {
-    width: 100%;
-    max-width: 1320px;
-    margin: 0 auto;
-    padding: 0 20px 80px;
-  }
-
-  .orgchart-wrap .connector-down {
-    width: 2px;
-    background: var(--line);
-    margin: 0 auto;
-  }
-  .orgchart-wrap .connector-h {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    position: relative;
-  }
-  .orgchart-wrap .connector-h::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 50%;
-    transform: translateX(-50%);
-    width: 2px; height: 28px;
-    background: var(--line);
-  }
-
-  .orgchart-wrap .box {
-    background: #fff;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding: 14px 20px;
-    transition: transform .2s ease, box-shadow .2s ease;
-    cursor: default;
-    position: relative;
-  }
-  .orgchart-wrap .box:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-h);
-  }
-  .orgchart-wrap .box-label {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 13px;
-    letter-spacing: .03em;
-    text-transform: uppercase;
-    margin-bottom: 2px;
-  }
-  .orgchart-wrap .box-sub {
-    font-size: 11.5px;
-    font-weight: 300;
-    color: #7a6f66;
-    letter-spacing: .02em;
-  }
-
-  .orgchart-wrap .box.board   { border-top: 4px solid var(--ink);    background: var(--ink);    color: #fff; }
-  .orgchart-wrap .box.board .box-sub { color: #a89e96; }
-  .orgchart-wrap .box.ceo     { border-top: 4px solid var(--amber);  background: var(--amber-lt); }
-  .orgchart-wrap .box.ceo .box-label { color: var(--amber); }
-  .orgchart-wrap .box.corp    { border-top: 4px solid var(--teal);   background: var(--teal-lt); }
-  .orgchart-wrap .box.corp .box-label { color: var(--teal); }
-  .orgchart-wrap .box.ops     { border-top: 4px solid var(--coral);  background: var(--coral-lt); }
-  .orgchart-wrap .box.ops .box-label { color: var(--coral); }
-
-  .orgchart-wrap .box.dept-corp  { border-left: 3px solid var(--teal); }
-  .orgchart-wrap .box.dept-ops   { border-left: 3px solid var(--coral); }
-
-  .orgchart-wrap .box.sub-corp { border-left: 3px solid var(--slate); background: var(--slate-lt); }
-  .orgchart-wrap .box.sub-ops  { border-left: 3px solid var(--coral); background: #fff8f7; }
-
-  .orgchart-wrap .box.leaf-corp { background: #f9fcfb; border-left: 2px solid #b2d8d3; }
-  .orgchart-wrap .box.leaf-ops  { background: #fff9f8; border-left: 2px solid #f0b8b1; }
-
-  .orgchart-wrap .l1 {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 0;
-  }
-  .orgchart-wrap .l1 .box {
-    min-width: 240px;
-    text-align: center;
-  }
-
-  .orgchart-wrap .l2 {
-    display: flex;
-    justify-content: center;
-  }
-  .orgchart-wrap .l2 .box {
-    min-width: 240px;
-    text-align: center;
-  }
-
-  .orgchart-wrap .branch-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
-    margin-top: 0;
-  }
-
-  .orgchart-wrap .h-split-wrap {
-    position: relative;
-    display: flex;
-    justify-content: center;
-  }
-  .orgchart-wrap .h-split-wrap .v-down { width: 2px; height: 28px; background: var(--line); margin: 0 auto; }
-  .orgchart-wrap .h-split-line {
-    display: flex;
-    align-items: flex-start;
-    position: relative;
-    width: 100%;
-    max-width: 800px;
-    margin: 0 auto;
-  }
-  .orgchart-wrap .h-split-line::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: calc(25%);
-    right: calc(25%);
-    height: 2px;
-    background: var(--line);
-  }
-  .orgchart-wrap .branch-stub {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-  }
-  .orgchart-wrap .branch-stub .v { width: 2px; height: 28px; background: var(--line); }
-
-  .orgchart-wrap .div-header {
-    display: flex;
-    justify-content: center;
-  }
-  .orgchart-wrap .div-header .box {
-    min-width: 260px;
-    text-align: center;
-  }
-
-  .orgchart-wrap .dept-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    justify-content: center;
-    margin-top: 0;
-  }
-  .orgchart-wrap .dept-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .orgchart-wrap .dept-box { min-width: 200px; max-width: 220px; text-align: left; }
-
-  .orgchart-wrap .sub-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-    padding-left: 8px;
-    margin-top: 6px;
-  }
-  .orgchart-wrap .sub-group .box { font-size: 12px; padding: 8px 12px; }
-  .orgchart-wrap .sub-group .box-label { font-size: 12px; }
-
-  .orgchart-wrap .leaf-group {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding-left: 12px;
-    margin-top: 4px;
-  }
-  .orgchart-wrap .leaf-group .box { padding: 6px 10px; }
-  .orgchart-wrap .leaf-group .box-label { font-size: 11px; font-family: 'DM Sans', sans-serif; font-weight: 500; text-transform: none; letter-spacing: 0; }
-
-  .orgchart-wrap .legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    justify-content: center;
-    margin: 48px auto 0;
-    max-width: 700px;
-  }
-  .orgchart-wrap .legend-item {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: #7a6f66;
-  }
-  .orgchart-wrap .legend-dot {
-    width: 12px; height: 12px; border-radius: 3px;
-  }
-
-  .orgchart-wrap .cv { width: 2px; background: var(--line); margin: 0 auto; }
-  .orgchart-wrap .cv-8  { height: 8px; }
-  .orgchart-wrap .cv-16 { height: 16px; }
-  .orgchart-wrap .cv-22 { height: 22px; }
-  .orgchart-wrap .cv-28 { height: 28px; }
-
-  @media (max-width: 900px) {
-    .orgchart-wrap .branch-row { grid-template-columns: 1fr; }
-    .orgchart-wrap .h-split-line::after { display: none; }
-    .orgchart-wrap .dept-row { flex-direction: column; align-items: center; }
-  }
-  @media (max-width: 560px) {
-    .orgchart-wrap .dept-box { min-width: 100%; max-width: 100%; }
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doggzi Finance — Organization Structure</title>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-
-<aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="brand">🐾 Doggzi</div>
-    <div class="tagline">Finance Control</div>
-  </div>
-  <nav class="sidebar-nav">
-    <div class="nav-section-label">Overview</div>
-    <a href="/" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Dashboard
-    </a>
-
-    <div class="nav-section-label">Expenses</div>
-    <a href="/capex" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      CAPEX
-    </a>
-    <a href="/opex" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-      OPEX
-    </a>
-    <a href="/logs" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-      Deletion Logs
-    </a>
-
-    <div class="nav-section-label">Company</div>
-    <a href="/org-chart" class="nav-link active">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="6" height="5" rx="1"/>
-        <rect x="15" y="3" width="6" height="5" rx="1"/>
-        <rect x="9" y="16" width="6" height="5" rx="1"/>
-        <path d="M6 8v4h12V8M12 12v4"/>
-      </svg>
-      Org Chart
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <p>Doggzi Internal Finance<br>© 2024 All rights reserved.</p>
-  </div>
-</aside>
+<aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav">
+<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a><a href="/org-chart" class="nav-link active">Organization Structure</a>
+<div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link">OPEX</a>
+<div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link">Outbound Transactions</a><a href="/transaction-issues" class="nav-link">Transaction Issues</a>
+</nav></aside>
 
 <div class="main">
   <header class="topbar">
     <div>
-      <div class="topbar-title">Org Chart</div>
-      <div class="topbar-sub">Organizational Structure &amp; Reporting Hierarchy</div>
-    </div>
-    <div class="topbar-right">
-      <span class="badge">🐾 Doggzi Structure</span>
+      <div class="topbar-title">Organization Structure</div>
+      <div class="topbar-sub">HQ strategy teams and field operations execution teams</div>
     </div>
   </header>
 
   <div class="content">
-    <div style="overflow-x: auto; padding-bottom: 24px;">
-      <div class="orgchart-wrap" style="min-width: 900px;">
-        <div class="chart">
-
-          <!-- BOARD -->
-          <div class="l1">
-            <div class="box board">
-              <div class="box-label">Board of Directors &amp; Investors</div>
-              <div class="box-sub">Governance · Strategic Oversight · Capital</div>
-            </div>
-          </div>
-          <div class="cv cv-28"></div>
-
-          <!-- CEO -->
-          <div class="l2">
-            <div class="box ceo">
-              <div class="box-label">CEO / Founder</div>
-              <div class="box-sub">Company Vision · Leadership · Execution</div>
-            </div>
-          </div>
-          <div class="cv cv-28"></div>
-
-          <!-- H SPLIT -->
-          <div class="h-split-line">
-            <div class="branch-stub"><div class="v"></div></div>
-            <div class="branch-stub"><div class="v"></div></div>
-          </div>
-
-          <!-- TWO BRANCHES -->
-          <div class="branch-row">
-
-            <!-- ═══════════════ CORPORATE ═══════════════ -->
-            <div>
-              <div class="div-header">
-                <div class="box corp">
-                  <div class="box-label">Corporate — Headquarters (HQ)</div>
-                  <div class="box-sub">Strategy · Finance · Technology · Brand</div>
-                </div>
-              </div>
-              <div class="cv cv-22"></div>
-
-              <div class="dept-row">
-
-                <!-- Finance -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-corp dept-box">
-                    <div class="box-label">Finance</div>
-                    <div class="box-sub">Budgeting · Reporting · Compliance</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box sub-corp">
-                      <div class="box-label">CAPEX — Capital Expenditure</div>
-                    </div>
-                    <div class="leaf-group">
-                      <div class="box leaf-corp"><div class="box-label">☁ Cloud Kitchen Setup</div></div>
-                      <div class="box leaf-corp"><div class="box-label">🍳 Cooking Equipment</div></div>
-                      <div class="box leaf-corp"><div class="box-label">🖥 Technology Infrastructure</div></div>
-                      <div class="box leaf-corp"><div class="box-label">📱 App Development</div></div>
-                      <div class="box leaf-corp"><div class="box-label">📈 Expansion Investment</div></div>
-                    </div>
-                    <div class="box sub-corp">
-                      <div class="box-label">OPEX — Operating Expenditure</div>
-                    </div>
-                    <div class="leaf-group">
-                      <div class="box leaf-corp"><div class="box-label">👥 Staff Salaries</div></div>
-                      <div class="box leaf-corp"><div class="box-label">🥩 Ingredients Procurement</div></div>
-                      <div class="box leaf-corp"><div class="box-label">📦 Packaging Materials</div></div>
-                      <div class="box leaf-corp"><div class="box-label">🚚 Delivery Costs</div></div>
-                      <div class="box leaf-corp"><div class="box-label">📣 Marketing Spend</div></div>
-                      <div class="box leaf-corp"><div class="box-label">🏢 Rent &amp; Utilities</div></div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Technology -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-corp dept-box">
-                    <div class="box-label">Technology / Engineering</div>
-                    <div class="box-sub">Platform · AI · Data</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-corp"><div class="box-label">📱 Doggzi App</div></div>
-                    <div class="box leaf-corp"><div class="box-label">🤖 AI Meal Personalization</div></div>
-                    <div class="box leaf-corp"><div class="box-label">📊 Data Analytics</div></div>
-                  </div>
-                </div>
-
-                <!-- Marketing -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-corp dept-box">
-                    <div class="box-label">Marketing &amp; Brand</div>
-                    <div class="box-sub">Awareness · Growth · Community</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-corp"><div class="box-label">📸 Social Media</div></div>
-                    <div class="box leaf-corp"><div class="box-label">🚀 Growth Campaigns</div></div>
-                    <div class="box leaf-corp"><div class="box-label">🤝 Partnerships</div></div>
-                  </div>
-                </div>
-
-                <!-- Vet -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-corp dept-box">
-                    <div class="box-label">Veterinary &amp; Nutrition</div>
-                    <div class="box-sub">Health · Science · Formulation</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-corp"><div class="box-label">🔬 Meal Formulation</div></div>
-                    <div class="box leaf-corp"><div class="box-label">🐕 Breed-based Diet Plans</div></div>
-                  </div>
-                </div>
-
-                <!-- Legal -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-corp dept-box">
-                    <div class="box-label">Legal &amp; Compliance</div>
-                    <div class="box-sub">Regulatory · Risk · Policy</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-corp"><div class="box-label">📋 Food Safety Regulations</div></div>
-                    <div class="box leaf-corp"><div class="box-label">✅ FSSAI Compliance</div></div>
-                  </div>
-                </div>
-
-                <!-- CX -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-corp dept-box">
-                    <div class="box-label">Customer Experience</div>
-                    <div class="box-sub">Retention · Loyalty · Support</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-corp"><div class="box-label">🔄 Subscription Management</div></div>
-                    <div class="box leaf-corp"><div class="box-label">💬 Customer Support</div></div>
-                  </div>
-                </div>
-
-              </div><!-- /dept-row corp -->
-            </div>
-            <!-- END CORPORATE -->
-
-            <!-- ═══════════════ OPERATIONS ═══════════════ -->
-            <div>
-              <div class="div-header">
-                <div class="box ops">
-                  <div class="box-label">Operations — Field</div>
-                  <div class="box-sub">Kitchen · Procurement · Delivery · Quality</div>
-                </div>
-              </div>
-              <div class="cv cv-22"></div>
-
-              <div class="dept-row">
-
-                <!-- Cloud Kitchen Ops -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-ops dept-box">
-                    <div class="box-label">Cloud Kitchen Operations</div>
-                    <div class="box-sub">Prep · Cook · Portion</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-ops"><div class="box-label">🥣 Meal Preparation</div></div>
-                    <div class="box leaf-ops"><div class="box-label">🔥 Cooking Process</div></div>
-                    <div class="box leaf-ops"><div class="box-label">⚖️ Portion Control</div></div>
-                  </div>
-                </div>
-
-                <!-- Procurement -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-ops dept-box">
-                    <div class="box-label">Procurement &amp; Supply Chain</div>
-                    <div class="box-sub">Vendors · Sourcing · Inventory</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-ops"><div class="box-label">🏭 Vendor Management</div></div>
-                    <div class="box leaf-ops"><div class="box-label">🛒 Ingredient Sourcing</div></div>
-                  </div>
-                </div>
-
-                <!-- Delivery -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-ops dept-box">
-                    <div class="box-label">Delivery &amp; Logistics</div>
-                    <div class="box-sub">Dispatch · Fleet · Last-Mile</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-ops"><div class="box-label">📦 Order Dispatch</div></div>
-                    <div class="box leaf-ops"><div class="box-label">🚐 Fleet Management</div></div>
-                  </div>
-                </div>
-
-                <!-- Quality -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-ops dept-box">
-                    <div class="box-label">Quality &amp; Food Safety</div>
-                    <div class="box-sub">Standards · Hygiene · Audits</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-ops"><div class="box-label">🧹 Hygiene Audits</div></div>
-                    <div class="box leaf-ops"><div class="box-label">🔍 Quality Checks</div></div>
-                  </div>
-                </div>
-
-                <!-- Ops Support -->
-                <div class="dept-col">
-                  <div class="cv cv-8"></div>
-                  <div class="box dept-ops dept-box">
-                    <div class="box-label">Customer Support (Ops)</div>
-                    <div class="box-sub">Issue Resolution · Field Escalations</div>
-                  </div>
-                  <div class="sub-group">
-                    <div class="box leaf-ops"><div class="box-label">⚠️ Order Issues</div></div>
-                    <div class="box leaf-ops"><div class="box-label">🚚 Delivery Problems</div></div>
-                  </div>
-                </div>
-
-              </div><!-- /dept-row ops -->
-            </div>
-            <!-- END OPERATIONS -->
-
-          </div><!-- /branch-row -->
-
-          <!-- LEGEND -->
-          <div class="legend">
-            <div class="legend-item"><div class="legend-dot" style="background:var(--ink)"></div>Board</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Executive</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--teal)"></div>Corporate HQ</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--coral)"></div>Field Operations</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--slate)"></div>Sub-departments</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#b2d8d3"></div>Functions</div>
-          </div>
-
-        </div><!-- /chart -->
+    <section class="org-page">
+      <div class="org-level ceo-level">
+        <div class="org-box ceo-box">
+          <h3>CEO / Founder</h3>
+          <p>Defines Doggzi strategy and leads company-wide execution.</p>
+        </div>
       </div>
-    </div>
+
+      <div class="org-trunk"></div>
+      <div class="org-branch-line"></div>
+
+      <div class="org-level two-columns">
+        <div class="org-column">
+          <div class="org-box branch-box">
+            <h3>Corporate — Headquarters (HQ)</h3>
+            <p>Strategy, finance, product, brand and governance.</p>
+          </div>
+          <div class="dept-grid">
+            <div class="org-box dept-box"><h4>Finance</h4><p>Manages CAPEX, OPEX, and financial reporting.</p></div>
+            <div class="org-box dept-box"><h4>Technology / Engineering</h4><p>Builds the Doggzi platform, data systems, and payment integrations.</p></div>
+            <div class="org-box dept-box"><h4>Marketing & Brand</h4><p>Drives growth campaigns, social media, and partnerships.</p></div>
+            <div class="org-box dept-box"><h4>Veterinary & Nutrition</h4><p>Owns meal formulation and breed-specific nutrition design.</p></div>
+            <div class="org-box dept-box"><h4>Legal & Compliance</h4><p>Ensures food safety and FSSAI compliance.</p></div>
+            <div class="org-box dept-box"><h4>Customer Experience</h4><p>Manages subscriptions and customer support quality.</p></div>
+          </div>
+        </div>
+
+        <div class="org-column">
+          <div class="org-box branch-box ops-box">
+            <h3>Operations — Field</h3>
+            <p>Execution, delivery, and quality control across cloud kitchens.</p>
+          </div>
+          <div class="dept-grid">
+            <div class="org-box dept-box"><h4>Cloud Kitchen Operations</h4><p>Handles meal preparation, cooking operations, and portion control.</p></div>
+            <div class="org-box dept-box"><h4>Procurement & Supply Chain</h4><p>Runs ingredient sourcing and vendor management.</p></div>
+            <div class="org-box dept-box"><h4>Delivery & Logistics</h4><p>Coordinates dispatch and rider management.</p></div>
+            <div class="org-box dept-box"><h4>Quality & Food Safety</h4><p>Performs hygiene audits and food safety checks.</p></div>
+            <div class="org-box dept-box"><h4>Customer Support (Field Ops)</h4><p>Resolves order and delivery issues from field operations.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
-
 </body>
 </html>

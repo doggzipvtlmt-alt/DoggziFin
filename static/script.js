@@ -82,11 +82,11 @@ async function refreshTable(getUrl, tableId, totalId, countId) {
   const type = tableId.includes('capex') ? 'capex' : 'opex';
 
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>No entries yet.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><p>No entries yet.</p></div></td></tr>`;
   } else {
     tbody.innerHTML = data.map(row => `
       <tr>
-        <td><strong>${esc(row.category)}</strong></td><td>${esc(row.description)}</td><td class="amt">${fmt(row.amount)}</td>
+        <td><strong>${esc(row.capex_id || row.opex_id || row.id || '')}</strong></td><td><strong>${esc(row.category)}</strong></td><td>${esc(row.description)}</td><td class="amt">${fmt(row.amount)}</td>
         <td>${esc(row.department)}</td><td>${row.date}</td><td>${esc(row.approved_by)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(row.notes||'—')}</td>
         <td><button class="btn btn-danger btn-sm js-delete-btn" data-id="${row.id}" data-type="${type}">Delete</button></td>
@@ -183,7 +183,7 @@ function initInboundTransactionsModule() {
     payload.transaction_type = 'inbound';
     const res = await postJSON('/api/add_transaction', payload);
     if (res.success) {
-      showAlert(alertEl, 'success', `✓ ${res.message}`);
+      showAlert(alertEl, 'success', `✓ ${res.message} (${res.transaction_id})`);
       form.reset();
       loadTransactions('inbound');
     } else {
@@ -205,7 +205,7 @@ function initOutboundTransactionsModule() {
     payload.transaction_type = 'outbound';
     const res = await postJSON('/api/add_transaction', payload);
     if (res.success) {
-      showAlert(alertEl, 'success', `✓ ${res.message}`);
+      showAlert(alertEl, 'success', `✓ ${res.message} (${res.transaction_id})`);
       form.reset();
       loadTransactions('outbound');
     } else {
@@ -216,12 +216,11 @@ function initOutboundTransactionsModule() {
   document.getElementById('record-refund-btn').addEventListener('click', async () => {
     const payload = {
       original_transaction_id: document.getElementById('refund-original-id').value.trim(),
-      transaction_id: document.getElementById('refund-tx-id').value.trim(),
       amount: document.getElementById('refund-amount').value,
       payment_method: document.getElementById('refund-payment-method').value.trim(),
     };
     const res = await postJSON('/api/record_refund', payload);
-    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message}`); loadTransactions('outbound'); }
+    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message} (${res.transaction_id})`); loadTransactions('outbound'); }
     else { showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to record refund'}`); }
   });
 }
@@ -247,7 +246,7 @@ function initTransactionIssuesModule() {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(form).entries());
     const res = await postJSON('/api/add_transaction_issue', payload);
-    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message}`); form.reset(); loadIssues(); }
+    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message} (${res.issue_id})`); form.reset(); loadIssues(); }
     else { showAlert(alertEl, 'error', `✗ ${(res.errors || [res.message]).join(', ')}`); }
   });
 

@@ -9,35 +9,11 @@
 </head>
 <body>
 
-<aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="brand">🐾 Doggzi</div>
-    <div class="tagline">Finance Control</div>
-  </div>
-  <nav class="sidebar-nav">
-    <div class="nav-section-label">Overview</div>
-    <a href="/" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Dashboard
-    </a>
-    <div class="nav-section-label">Expenses</div>
-    <a href="/capex" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      CAPEX
-    </a>
-    <a href="/opex" class="nav-link active">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-      OPEX
-    </a>
-    <div class="nav-section-label">Transactions</div>
-    <a href="/inbound-transactions" class="nav-link">Inbound Transactions</a>
-    <a href="/outbound-transactions" class="nav-link">Outbound Transactions</a>
-    <a href="/transaction-issues" class="nav-link">Transaction Issues</a>
-  </nav>
-  <div class="sidebar-footer">
-    <p>Doggzi Internal Finance<br>© 2024 All rights reserved.</p>
-  </div>
-</aside>
+<aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav">
+<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a><a href="/org-chart" class="nav-link">Organization Structure</a>
+<div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link active">OPEX</a>
+<div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link">Outbound Transactions</a><a href="/transaction-issues" class="nav-link">Transaction Issues</a>
+</nav></aside>
 
 <div class="main">
   <header class="topbar">
@@ -133,6 +109,7 @@
             <table>
               <thead>
                 <tr>
+                  <th>OPEX ID</th>
                   <th>Category</th>
                   <th>Description</th>
                   <th>Amount</th>
@@ -147,6 +124,7 @@
                 {% if entries %}
                   {% for e in entries %}
                   <tr>
+                    <td><strong>{{ e.opex_id or e.id }}</strong></td>
                     <td><strong>{{ e.category }}</strong></td>
                     <td>{{ e.description }}</td>
                     <td class="amt">₹{{ "{:,.0f}".format(e.amount) }}</td>
@@ -158,7 +136,7 @@
                   </tr>
                   {% endfor %}
                 {% else %}
-                  <tr><td colspan="8">
+                  <tr><td colspan="9">
                     <div class="empty-state">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                       <p>No OPEX entries yet. Add your first record above.</p>
