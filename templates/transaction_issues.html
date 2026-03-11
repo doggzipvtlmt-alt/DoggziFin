@@ -2,14 +2,13 @@
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Transaction Issues</title><link rel="stylesheet" href="/static/style.css"></head>
 <body>
 <aside class="sidebar"><div class="sidebar-logo"><div class="brand">🐾 Doggzi</div><div class="tagline">Finance Control</div></div><nav class="sidebar-nav">
-<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a>
+<div class="nav-section-label">Overview</div><a href="/" class="nav-link">Dashboard</a><a href="/org-chart" class="nav-link">Organization Structure</a>
 <div class="nav-section-label">Records</div><a href="/capex" class="nav-link">CAPEX</a><a href="/opex" class="nav-link">OPEX</a>
 <div class="nav-section-label">Transactions</div><a href="/inbound-transactions" class="nav-link">Inbound Transactions</a><a href="/outbound-transactions" class="nav-link">Outbound Transactions</a><a href="/transaction-issues" class="nav-link active">Transaction Issues</a>
 </nav></aside>
 <div class="main"><header class="topbar"><div><div class="topbar-title">Transaction Issues</div></div></header><div class="content">
 <div id="issues-alert" class="alert" style="margin-bottom:16px"></div>
-<form id="issue-form" novalidate><div class="form-grid">
-<div class="field"><label>issue_id *</label><input name="issue_id" required></div>
+<form id="issue-form" novalidate><p style="font-size:12px;color:var(--muted);margin-bottom:10px">Issue ID is auto-generated (ISSUE-0001, ISSUE-0002, ...).</p><div class="form-grid">
 <div class="field"><label>transaction_id *</label><input name="transaction_id" required></div>
 <div class="field"><label>issue_type *</label><input name="issue_type" required></div>
 <div class="field"><label>reported_by *</label><input name="reported_by" required></div>

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from flask import Flask, jsonify, render_template, request
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 
 app = Flask(__name__)
 
@@ -37,9 +37,24 @@ def get_db():
 
 def init_collections(db):
     existing = set(db.list_collection_names())
-    for name in ["capex_expenses", "opex_expenses", "transactions", "transaction_issues", "deletion_logs"]:
+    for name in ["capex_expenses", "opex_expenses", "transactions", "transaction_issues", "deletion_logs", "id_counters"]:
         if name not in existing:
             db.create_collection(name)
+
+    db.capex_expenses.create_index("capex_id", unique=True, partialFilterExpression={"capex_id": {"$exists": True}})
+    db.opex_expenses.create_index("opex_id", unique=True, partialFilterExpression={"opex_id": {"$exists": True}})
+    db.transactions.create_index("transaction_id", unique=True, partialFilterExpression={"transaction_id": {"$exists": True}})
+    db.transaction_issues.create_index("issue_id", unique=True, partialFilterExpression={"issue_id": {"$exists": True}})
+
+
+def generate_readable_id(counter_key, prefix):
+    counter = get_db().id_counters.find_one_and_update(
+        {"_id": counter_key},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return f"{prefix}-{counter['seq']:04d}"
 
 
 def serialize_doc(doc):
@@ -74,7 +89,6 @@ def validate_expense(data):
 
 def validate_transaction(data):
     required = [
-        "transaction_id",
         "amount",
         "payment_method",
         "transaction_type",
@@ -100,7 +114,8 @@ def validate_transaction(data):
 
 def _find_expense_entries(collection_name):
     db = get_db()
-    entries = list(db[collection_name].find({}, {"_id": 1, "category": 1, "description": 1, "amount": 1, "department": 1, "date": 1, "approved_by": 1, "notes": 1}).sort("date", -1))
+    id_field = "capex_id" if collection_name == "capex_expenses" else "opex_id"
+    entries = list(db[collection_name].find({}, {"_id": 1, id_field: 1, "category": 1, "description": 1, "amount": 1, "department": 1, "date": 1, "approved_by": 1, "notes": 1}).sort("date", -1))
     return [serialize_doc(entry) for entry in entries]
 
 
@@ -231,8 +246,10 @@ def add_capex():
         return jsonify({"success": False, "errors": errors}), 400
 
     amount = parse_amount(data.get("amount"))
+    capex_id = generate_readable_id("capex", "CAPEX")
     get_db().capex_expenses.insert_one(
         {
+            "capex_id": capex_id,
             "category": data["category"],
             "description": data["description"],
             "amount": amount,
@@ -243,7 +260,7 @@ def add_capex():
             "created_at": datetime.now(timezone.utc),
         }
     )
-    return jsonify({"success": True, "message": "CAPEX entry added successfully"})
+    return jsonify({"success": True, "message": "CAPEX entry added successfully", "capex_id": capex_id})
 
 
 @app.route("/api/add_opex", methods=["POST"])
@@ -254,8 +271,10 @@ def add_opex():
         return jsonify({"success": False, "errors": errors}), 400
 
     amount = parse_amount(data.get("amount"))
+    opex_id = generate_readable_id("opex", "OPEX")
     get_db().opex_expenses.insert_one(
         {
+            "opex_id": opex_id,
             "category": data["category"],
             "description": data["description"],
             "amount": amount,
@@ -266,7 +285,7 @@ def add_opex():
             "created_at": datetime.now(timezone.utc),
         }
     )
-    return jsonify({"success": True, "message": "OPEX entry added successfully"})
+    return jsonify({"success": True, "message": "OPEX entry added successfully", "opex_id": opex_id})
 
 
 @app.route("/api/get_capex")
@@ -344,8 +363,9 @@ def add_transaction():
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
 
+    transaction_id = generate_readable_id("inbound_transaction", "INB") if data.get("transaction_type") == "inbound" else generate_readable_id("outbound_transaction", "OUT")
     document = {
-        "transaction_id": data["transaction_id"],
+        "transaction_id": transaction_id,
         "order_id": data.get("order_id", ""),
         "customer_id": data.get("customer_id", ""),
         "vendor_id": data.get("vendor_id", ""),
@@ -361,7 +381,7 @@ def add_transaction():
     }
     get_db().transactions.insert_one(document)
 
-    return jsonify({"success": True, "message": "Transaction added successfully"})
+    return jsonify({"success": True, "message": "Transaction added successfully", "transaction_id": transaction_id})
 
 
 @app.route("/api/get_transactions")
@@ -396,11 +416,11 @@ def update_transaction_status(transaction_id):
 def record_refund():
     data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
     original_transaction_id = data.get("original_transaction_id", "")
-    refund_transaction_id = data.get("transaction_id", "")
+    refund_transaction_id = data.get("transaction_id", "") or generate_readable_id("outbound_transaction", "OUT")
     amount = parse_amount(data.get("amount"))
 
-    if not original_transaction_id or not refund_transaction_id or amount is None:
-        return jsonify({"success": False, "message": "original_transaction_id, transaction_id and valid amount are required"}), 400
+    if not original_transaction_id or amount is None:
+        return jsonify({"success": False, "message": "original_transaction_id and valid amount are required"}), 400
 
     original = get_db().transactions.find_one({"transaction_id": original_transaction_id})
     if not original:
@@ -435,7 +455,7 @@ def record_refund():
 @app.route("/api/add_transaction_issue", methods=["POST"])
 def add_transaction_issue():
     data = {k: (v.strip() if isinstance(v, str) else v) for k, v in (request.json or {}).items()}
-    required = ["issue_id", "transaction_id", "issue_type", "description", "reported_by"]
+    required = ["transaction_id", "issue_type", "description", "reported_by"]
     errors = [f"{field} is required" for field in required if not str(data.get(field, "")).strip()]
     status = (data.get("status") or "open").strip().lower()
     if status not in ALLOWED_ISSUE_STATUS:
@@ -444,9 +464,10 @@ def add_transaction_issue():
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
 
+    issue_id = generate_readable_id("transaction_issue", "ISSUE")
     get_db().transaction_issues.insert_one(
         {
-            "issue_id": data["issue_id"],
+            "issue_id": issue_id,
             "transaction_id": data["transaction_id"],
             "issue_type": data["issue_type"],
             "description": data["description"],
@@ -455,7 +476,7 @@ def add_transaction_issue():
             "created_at": datetime.now(timezone.utc),
         }
     )
-    return jsonify({"success": True, "message": "Transaction issue created"})
+    return jsonify({"success": True, "message": "Transaction issue created", "issue_id": issue_id})
 
 
 @app.route("/api/get_transaction_issues")

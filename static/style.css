@@ -601,3 +601,32 @@ tbody td {
 .pill-refunded { background: #DBEAFE; color: #1D4ED8; }
 .pill-failed { background: #FECACA; color: #991B1B; }
 .pill-completed { background: #E5E7EB; color: #374151; }
+
+/* ── Organization structure ───────────────────────── */
+.org-page { max-width: 1200px; margin: 0 auto; }
+.org-level { display: flex; justify-content: center; }
+.org-trunk { width: 2px; height: 28px; background: var(--border); margin: 0 auto; }
+.org-branch-line { height: 2px; background: var(--border); width: min(92%, 900px); margin: 0 auto 18px; }
+.two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.org-column { display: flex; flex-direction: column; gap: 14px; }
+.org-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+.org-box h3, .org-box h4 { font-size: 14px; margin-bottom: 6px; }
+.org-box p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.ceo-box { text-align: center; max-width: 320px; border-top: 4px solid #92400E; }
+.branch-box { border-top: 4px solid #0F766E; }
+.ops-box { border-top-color: #B91C1C; }
+.dept-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dept-box { min-height: 108px; }
+@media (max-width: 960px) {
+  .two-columns { grid-template-columns: 1fr; }
+  .org-branch-line { width: 2px; height: 20px; }
+}
+@media (max-width: 640px) {
+  .dept-grid { grid-template-columns: 1fr; }
+}
