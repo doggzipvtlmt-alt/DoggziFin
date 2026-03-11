@@ -36,6 +36,13 @@ function esc(s) {
     .replace(/"/g,'&quot;');
 }
 
+function transactionStatusPill(status) {
+  const map = {
+    pending: 'pill-pending', refunded: 'pill-refunded', failed: 'pill-failed', completed: 'pill-completed',
+  };
+  return `<span class="${map[status] || 'pill-completed'}">${esc(status)}</span>`;
+}
+
 // ── Generic expense form handler ────────────────────────────────────────────
 
 function initExpenseForm(formId, endpoint, tableId, totalId, countId) {
@@ -75,23 +82,12 @@ async function refreshTable(getUrl, tableId, totalId, countId) {
   const type = tableId.includes('capex') ? 'capex' : 'opex';
 
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="8">
-      <div class="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-        </svg>
-        <p>No entries yet. Add your first record above.</p>
-      </div>
-    </td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>No entries yet.</p></div></td></tr>`;
   } else {
     tbody.innerHTML = data.map(row => `
       <tr>
-        <td><strong>${esc(row.category)}</strong></td>
-        <td>${esc(row.description)}</td>
-        <td class="amt">${fmt(row.amount)}</td>
-        <td>${esc(row.department)}</td>
-        <td>${row.date}</td>
-        <td>${esc(row.approved_by)}</td>
+        <td><strong>${esc(row.category)}</strong></td><td>${esc(row.description)}</td><td class="amt">${fmt(row.amount)}</td>
+        <td>${esc(row.department)}</td><td>${row.date}</td><td>${esc(row.approved_by)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(row.notes||'—')}</td>
         <td><button class="btn btn-danger btn-sm js-delete-btn" data-id="${row.id}" data-type="${type}">Delete</button></td>
       </tr>`).join('');
@@ -106,135 +102,62 @@ async function refreshTable(getUrl, tableId, totalId, countId) {
 
 function initDeleteModal(expenseType, getEndpoint, tableId, totalId, countId) {
   const modal = document.getElementById('delete-modal');
+  if (!modal) return;
   const closeBtn = document.getElementById('delete-modal-close');
   const cancelBtn = document.getElementById('delete-cancel-btn');
   const confirmBtn = document.getElementById('delete-confirm-btn');
   const errorEl = document.getElementById('delete-error');
   const nameInput = document.getElementById('delete-name');
   const passwordInput = document.getElementById('delete-password');
-  if (!modal) return;
 
   let selectedId = null;
-
-  const closeModal = () => {
-    modal.style.display = 'none';
-    selectedId = null;
-    errorEl.style.display = 'none';
-    errorEl.textContent = '';
-    nameInput.value = '';
-    passwordInput.value = '';
-  };
+  const closeModal = () => { modal.style.display = 'none'; selectedId = null; errorEl.style.display = 'none'; nameInput.value = ''; passwordInput.value = ''; };
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.js-delete-btn');
     if (!btn || btn.dataset.type !== expenseType) return;
     selectedId = btn.dataset.id;
     modal.style.display = 'flex';
-    errorEl.style.display = 'none';
   });
-
   closeBtn.addEventListener('click', closeModal);
   cancelBtn.addEventListener('click', closeModal);
-
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
-  });
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
   confirmBtn.addEventListener('click', async () => {
     if (!selectedId) return;
     setLoading(confirmBtn, true, 'Deleting…');
-    errorEl.style.display = 'none';
-
     try {
       const res = await fetch(`/api/delete_${expenseType}/${selectedId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deleted_by: nameInput.value.trim(),
-          password: passwordInput.value.trim(),
-        }),
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleted_by: nameInput.value.trim(), password: passwordInput.value.trim() }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        errorEl.textContent = data.message || 'Unable to delete entry.';
-        errorEl.style.display = 'block';
-        return;
-      }
-
+      if (!res.ok) { errorEl.textContent = data.message || 'Unable to delete entry.'; errorEl.style.display = 'block'; return; }
       closeModal();
       await refreshTable(getEndpoint, tableId, totalId, countId);
-    } catch (err) {
-      errorEl.textContent = 'Network error. Please try again.';
-      errorEl.style.display = 'block';
     } finally {
       setLoading(confirmBtn, false);
     }
   });
 }
 
-function transactionTypePill(type) {
-  const cls = type === 'inbound' ? 'pill-inbound' : 'pill-outbound';
-  return `<span class="${cls}">${esc(type)}</span>`;
-}
-
-function transactionStatusPill(status) {
-  const map = {
-    pending: 'pill-pending',
-    refunded: 'pill-refunded',
-    failed: 'pill-failed',
-    completed: 'pill-completed',
-  };
-  return `<span class="${map[status] || 'pill-completed'}">${esc(status)}</span>`;
-}
-
-async function loadTransactions(filter = '') {
-  const tbody = document.getElementById('transactions-tbody');
+async function loadTransactions(type, tableBodyId = 'transactions-tbody') {
+  const tbody = document.getElementById(tableBodyId);
   if (!tbody) return;
-  const q = filter ? `?transaction_type=${encodeURIComponent(filter)}` : '';
-  const rows = await fetch(`/api/get_transactions${q}`).then(r => r.json());
+  const rows = await fetch(`/api/get_transactions?transaction_type=${encodeURIComponent(type)}`).then(r => r.json());
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><p>No transactions found.</p></div></td></tr>`;
     return;
   }
-  tbody.innerHTML = rows.map((r) => `
-    <tr>
-      <td>${esc(r.transaction_id || '')}</td>
-      <td>${transactionTypePill(r.transaction_type || '')}</td>
-      <td>${esc(r.transaction_category || '')}</td>
-      <td>${transactionStatusPill(r.transaction_status || '')}</td>
-      <td class="amt">${fmt(r.amount || 0)}</td>
-      <td>${esc(r.order_id || '—')}</td>
-      <td>${esc(r.customer_id || '—')}</td>
-      <td>${esc(r.vendor_id || '—')}</td>
-      <td>${esc((r.created_at || '').replace('T', ' ').slice(0, 19))}</td>
-    </tr>`).join('');
+
+  if (type === 'inbound') {
+    tbody.innerHTML = rows.map((r) => `<tr><td>${esc(r.transaction_id || '')}</td><td>${esc(r.transaction_category || '')}</td><td>${transactionStatusPill(r.transaction_status || '')}</td><td class="amt">${fmt(r.amount || 0)}</td><td>${esc(r.order_id || '—')}</td><td>${esc(r.customer_id || '—')}</td><td>${esc((r.created_at || '').replace('T', ' ').slice(0, 19))}</td></tr>`).join('');
+  } else {
+    tbody.innerHTML = rows.map((r) => `<tr><td>${esc(r.transaction_id || '')}</td><td>${esc(r.transaction_category || '')}</td><td>${transactionStatusPill(r.transaction_status || '')}</td><td class="amt">${fmt(r.amount || 0)}</td><td>${esc(r.vendor_id || '—')}</td><td>${esc((r.created_at || '').replace('T', ' ').slice(0, 19))}</td></tr>`).join('');
+  }
 }
 
-function initTransactionsModule() {
-  const form = document.getElementById('transaction-form');
-  const alertEl = document.getElementById('transaction-alert');
-  if (!form) return;
-
-  loadTransactions('');
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = Object.fromEntries(new FormData(form).entries());
-    const res = await postJSON('/api/add_transaction', payload);
-    if (res.success) {
-      showAlert(alertEl, 'success', `✓ ${res.message}`);
-      form.reset();
-      loadTransactions(document.getElementById('transaction-filter').value);
-    } else {
-      showAlert(alertEl, 'error', `✗ ${(res.errors || [res.message]).join(', ')}`);
-    }
-  });
-
-  document.getElementById('transaction-filter').addEventListener('change', (e) => {
-    loadTransactions(e.target.value);
-  });
-
+function wireTransactionStatusUpdate(alertEl) {
   document.getElementById('update-status-btn').addEventListener('click', async () => {
     const txId = document.getElementById('status-tx-id').value.trim();
     const status = document.getElementById('status-new-value').value;
@@ -243,11 +166,50 @@ function initTransactionsModule() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transaction_status: status }),
     }).then(r => r.json());
+    if (res.success) showAlert(alertEl, 'success', `✓ ${res.message}`); else showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to update status'}`);
+  });
+}
+
+function initInboundTransactionsModule() {
+  const form = document.getElementById('inbound-transaction-form');
+  const alertEl = document.getElementById('transaction-alert');
+  if (!form) return;
+  loadTransactions('inbound');
+  wireTransactionStatusUpdate(alertEl);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.transaction_type = 'inbound';
+    const res = await postJSON('/api/add_transaction', payload);
     if (res.success) {
       showAlert(alertEl, 'success', `✓ ${res.message}`);
-      loadTransactions(document.getElementById('transaction-filter').value);
+      form.reset();
+      loadTransactions('inbound');
     } else {
-      showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to update status'}`);
+      showAlert(alertEl, 'error', `✗ ${(res.errors || [res.message]).join(', ')}`);
+    }
+  });
+}
+
+function initOutboundTransactionsModule() {
+  const form = document.getElementById('outbound-transaction-form');
+  const alertEl = document.getElementById('transaction-alert');
+  if (!form) return;
+  loadTransactions('outbound');
+  wireTransactionStatusUpdate(alertEl);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.transaction_type = 'outbound';
+    const res = await postJSON('/api/add_transaction', payload);
+    if (res.success) {
+      showAlert(alertEl, 'success', `✓ ${res.message}`);
+      form.reset();
+      loadTransactions('outbound');
+    } else {
+      showAlert(alertEl, 'error', `✗ ${(res.errors || [res.message]).join(', ')}`);
     }
   });
 
@@ -259,11 +221,44 @@ function initTransactionsModule() {
       payment_method: document.getElementById('refund-payment-method').value.trim(),
     };
     const res = await postJSON('/api/record_refund', payload);
-    if (res.success) {
-      showAlert(alertEl, 'success', `✓ ${res.message}`);
-      loadTransactions(document.getElementById('transaction-filter').value);
-    } else {
-      showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to record refund'}`);
-    }
+    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message}`); loadTransactions('outbound'); }
+    else { showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to record refund'}`); }
+  });
+}
+
+async function loadIssues() {
+  const tbody = document.getElementById('issues-tbody');
+  if (!tbody) return;
+  const rows = await fetch('/api/get_transaction_issues').then(r => r.json());
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No issues raised yet.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((r) => `<tr><td>${esc(r.issue_id)}</td><td>${esc(r.transaction_id)}</td><td>${esc(r.issue_type)}</td><td>${esc(r.status)}</td><td>${esc(r.reported_by)}</td><td>${esc((r.created_at || '').replace('T', ' ').slice(0, 19))}</td></tr>`).join('');
+}
+
+function initTransactionIssuesModule() {
+  const form = document.getElementById('issue-form');
+  const alertEl = document.getElementById('issues-alert');
+  if (!form) return;
+  loadIssues();
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const res = await postJSON('/api/add_transaction_issue', payload);
+    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message}`); form.reset(); loadIssues(); }
+    else { showAlert(alertEl, 'error', `✗ ${(res.errors || [res.message]).join(', ')}`); }
+  });
+
+  document.getElementById('update-issue-status-btn').addEventListener('click', async () => {
+    const issueId = document.getElementById('issue-status-id').value.trim();
+    const status = document.getElementById('issue-status-value').value;
+    if (!issueId) return showAlert(alertEl, 'error', '✗ issue_id is required');
+    const res = await fetch(`/api/update_transaction_issue_status/${encodeURIComponent(issueId)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+    }).then(r => r.json());
+    if (res.success) { showAlert(alertEl, 'success', `✓ ${res.message}`); loadIssues(); }
+    else { showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to update issue status'}`); }
   });
 }
