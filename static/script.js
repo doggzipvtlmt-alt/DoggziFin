@@ -172,3 +172,98 @@ function initDeleteModal(expenseType, getEndpoint, tableId, totalId, countId) {
     }
   });
 }
+
+function transactionTypePill(type) {
+  const cls = type === 'inbound' ? 'pill-inbound' : 'pill-outbound';
+  return `<span class="${cls}">${esc(type)}</span>`;
+}
+
+function transactionStatusPill(status) {
+  const map = {
+    pending: 'pill-pending',
+    refunded: 'pill-refunded',
+    failed: 'pill-failed',
+    completed: 'pill-completed',
+  };
+  return `<span class="${map[status] || 'pill-completed'}">${esc(status)}</span>`;
+}
+
+async function loadTransactions(filter = '') {
+  const tbody = document.getElementById('transactions-tbody');
+  if (!tbody) return;
+  const q = filter ? `?transaction_type=${encodeURIComponent(filter)}` : '';
+  const rows = await fetch(`/api/get_transactions${q}`).then(r => r.json());
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><p>No transactions found.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td>${esc(r.transaction_id || '')}</td>
+      <td>${transactionTypePill(r.transaction_type || '')}</td>
+      <td>${esc(r.transaction_category || '')}</td>
+      <td>${transactionStatusPill(r.transaction_status || '')}</td>
+      <td class="amt">${fmt(r.amount || 0)}</td>
+      <td>${esc(r.order_id || '—')}</td>
+      <td>${esc(r.customer_id || '—')}</td>
+      <td>${esc(r.vendor_id || '—')}</td>
+      <td>${esc((r.created_at || '').replace('T', ' ').slice(0, 19))}</td>
+    </tr>`).join('');
+}
+
+function initTransactionsModule() {
+  const form = document.getElementById('transaction-form');
+  const alertEl = document.getElementById('transaction-alert');
+  if (!form) return;
+
+  loadTransactions('');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const res = await postJSON('/api/add_transaction', payload);
+    if (res.success) {
+      showAlert(alertEl, 'success', `✓ ${res.message}`);
+      form.reset();
+      loadTransactions(document.getElementById('transaction-filter').value);
+    } else {
+      showAlert(alertEl, 'error', `✗ ${(res.errors || [res.message]).join(', ')}`);
+    }
+  });
+
+  document.getElementById('transaction-filter').addEventListener('change', (e) => {
+    loadTransactions(e.target.value);
+  });
+
+  document.getElementById('update-status-btn').addEventListener('click', async () => {
+    const txId = document.getElementById('status-tx-id').value.trim();
+    const status = document.getElementById('status-new-value').value;
+    if (!txId) return showAlert(alertEl, 'error', '✗ Transaction ID is required for status update');
+    const res = await fetch(`/api/update_transaction_status/${encodeURIComponent(txId)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction_status: status }),
+    }).then(r => r.json());
+    if (res.success) {
+      showAlert(alertEl, 'success', `✓ ${res.message}`);
+      loadTransactions(document.getElementById('transaction-filter').value);
+    } else {
+      showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to update status'}`);
+    }
+  });
+
+  document.getElementById('record-refund-btn').addEventListener('click', async () => {
+    const payload = {
+      original_transaction_id: document.getElementById('refund-original-id').value.trim(),
+      transaction_id: document.getElementById('refund-tx-id').value.trim(),
+      amount: document.getElementById('refund-amount').value,
+      payment_method: document.getElementById('refund-payment-method').value.trim(),
+    };
+    const res = await postJSON('/api/record_refund', payload);
+    if (res.success) {
+      showAlert(alertEl, 'success', `✓ ${res.message}`);
+      loadTransactions(document.getElementById('transaction-filter').value);
+    } else {
+      showAlert(alertEl, 'error', `✗ ${res.message || 'Unable to record refund'}`);
+    }
+  });
+}
