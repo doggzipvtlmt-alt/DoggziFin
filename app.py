@@ -1,8 +1,12 @@
 import os
+from io import BytesIO
+from uuid import uuid4
 from datetime import datetime, timezone
 
+import pandas as pd
 from bson import ObjectId
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
+from pymongo.errors import DuplicateKeyError
 from pymongo import MongoClient, ReturnDocument
 
 app = Flask(__name__)
@@ -37,14 +41,16 @@ def get_db():
 
 def init_collections(db):
     existing = set(db.list_collection_names())
-    for name in ["capex_expenses", "opex_expenses", "transactions", "transaction_issues", "deletion_logs", "id_counters"]:
+    for name in ["capex_expenses", "opex_expenses", "transactions", "transaction_issues", "system_logs", "id_counters"]:
         if name not in existing:
             db.create_collection(name)
 
     db.capex_expenses.create_index("capex_id", unique=True, partialFilterExpression={"capex_id": {"$exists": True}})
     db.opex_expenses.create_index("opex_id", unique=True, partialFilterExpression={"opex_id": {"$exists": True}})
     db.transactions.create_index("transaction_id", unique=True, partialFilterExpression={"transaction_id": {"$exists": True}})
+    db.transactions.create_index("internal_transaction_key", unique=True, partialFilterExpression={"internal_transaction_key": {"$exists": True}})
     db.transaction_issues.create_index("issue_id", unique=True, partialFilterExpression={"issue_id": {"$exists": True}})
+    db.system_logs.create_index("log_id", unique=True, partialFilterExpression={"log_id": {"$exists": True}})
 
 
 def generate_readable_id(counter_key, prefix):
@@ -55,6 +61,24 @@ def generate_readable_id(counter_key, prefix):
         return_document=ReturnDocument.AFTER,
     )
     return f"{prefix}-{counter['seq']:04d}"
+
+
+def create_system_log(action_type, module_name, user_id, details, download_type="", file_name="", deleted_record_id="", reason=""):
+    get_db().system_logs.insert_one(
+        {
+            "log_id": generate_readable_id("system_log", "LOG"),
+            "action_type": action_type,
+            "module_name": module_name,
+            "user_id": user_id or "unknown",
+            "download_type": download_type,
+            "file_name": file_name,
+            "deleted_record_id": deleted_record_id,
+            "reason": reason,
+            "details": details,
+            "timestamp": datetime.now(timezone.utc),
+            "ip_address": request.headers.get("X-Forwarded-For", request.remote_addr or "unknown"),
+        }
+    )
 
 
 def serialize_doc(doc):
@@ -246,20 +270,27 @@ def add_capex():
         return jsonify({"success": False, "errors": errors}), 400
 
     amount = parse_amount(data.get("amount"))
-    capex_id = generate_readable_id("capex", "CAPEX")
-    get_db().capex_expenses.insert_one(
-        {
-            "capex_id": capex_id,
-            "category": data["category"],
-            "description": data["description"],
-            "amount": amount,
-            "department": data["department"],
-            "date": data["date"],
-            "approved_by": data["approved_by"],
-            "notes": data.get("notes", ""),
-            "created_at": datetime.now(timezone.utc),
-        }
-    )
+    capex_id = data.get("capex_id", "")
+    if not capex_id:
+        return jsonify({"success": False, "errors": ["capex_id is required. Use Generate ID."]}), 400
+
+    try:
+        get_db().capex_expenses.insert_one(
+            {
+                "capex_id": capex_id,
+                "internal_record_id": f"ICR-{uuid4().hex[:12].upper()}",
+                "category": data["category"],
+                "description": data["description"],
+                "amount": amount,
+                "department": data["department"],
+                "date": data["date"],
+                "approved_by": data["approved_by"],
+                "notes": data.get("notes", ""),
+                "created_at": datetime.now(timezone.utc),
+            }
+        )
+    except DuplicateKeyError:
+        return jsonify({"success": False, "errors": ["capex_id already exists. Generate a new ID."]}), 409
     return jsonify({"success": True, "message": "CAPEX entry added successfully", "capex_id": capex_id})
 
 
@@ -271,20 +302,26 @@ def add_opex():
         return jsonify({"success": False, "errors": errors}), 400
 
     amount = parse_amount(data.get("amount"))
-    opex_id = generate_readable_id("opex", "OPEX")
-    get_db().opex_expenses.insert_one(
-        {
-            "opex_id": opex_id,
-            "category": data["category"],
-            "description": data["description"],
-            "amount": amount,
-            "department": data["department"],
-            "date": data["date"],
-            "approved_by": data["approved_by"],
-            "notes": data.get("notes", ""),
-            "created_at": datetime.now(timezone.utc),
-        }
-    )
+    opex_id = data.get("opex_id", "")
+    if not opex_id:
+        return jsonify({"success": False, "errors": ["opex_id is required. Use Generate ID."]}), 400
+    try:
+        get_db().opex_expenses.insert_one(
+            {
+                "opex_id": opex_id,
+                "internal_record_id": f"IOR-{uuid4().hex[:12].upper()}",
+                "category": data["category"],
+                "description": data["description"],
+                "amount": amount,
+                "department": data["department"],
+                "date": data["date"],
+                "approved_by": data["approved_by"],
+                "notes": data.get("notes", ""),
+                "created_at": datetime.now(timezone.utc),
+            }
+        )
+    except DuplicateKeyError:
+        return jsonify({"success": False, "errors": ["opex_id already exists. Generate a new ID."]}), 409
     return jsonify({"success": True, "message": "OPEX entry added successfully", "opex_id": opex_id})
 
 
@@ -319,18 +356,13 @@ def _delete_expense_entry(entry_id, collection_name, entry_type):
     if not entry:
         return jsonify({"success": False, "message": f"{entry_type} entry not found"}), 404
 
-    db.deletion_logs.insert_one(
-        {
-            "deleted_by": deleted_by,
-            "entry_type": entry_type,
-            "entry_id": str(entry["_id"]),
-            "category": entry.get("category", ""),
-            "description": entry.get("description", ""),
-            "amount": float(entry.get("amount", 0)),
-            "department": entry.get("department", ""),
-            "entry_date": entry.get("date", ""),
-            "deleted_at": datetime.now(timezone.utc),
-        }
+    create_system_log(
+        action_type="delete",
+        module_name=entry_type,
+        user_id=deleted_by,
+        deleted_record_id=entry.get(f"{entry_type.lower()}_id", str(entry["_id"])),
+        reason=data.get("reason", ""),
+        details=f"Deleted {entry_type} record {entry.get('description', '')}",
     )
     db[collection_name].delete_one({"_id": object_id})
 
@@ -347,13 +379,18 @@ def delete_opex(entry_id):
     return _delete_expense_entry(entry_id, "opex_expenses", "OPEX")
 
 
-@app.route("/api/deletion_logs")
-def deletion_logs():
-    if request.args.get("password", "") != "3344":
-        return jsonify({"success": False, "message": "Incorrect password"}), 403
-
-    rows = list(get_db().deletion_logs.find({}).sort("deleted_at", -1))
-    return jsonify([serialize_doc(r) for r in rows])
+@app.route("/api/generate_id/<module_name>")
+def generate_id(module_name):
+    mapping = {
+        "capex": ("capex", "CAPEX", "capex_id"),
+        "opex": ("opex", "OPEX", "opex_id"),
+        "issue": ("transaction_issue", "ISSUE", "issue_id"),
+        "outbound": ("outbound_transaction", "OUT", "transaction_id"),
+    }
+    if module_name not in mapping:
+        return jsonify({"success": False, "message": "Unsupported module"}), 400
+    counter_key, prefix, field_name = mapping[module_name]
+    return jsonify({"success": True, "field": field_name, "value": generate_readable_id(counter_key, prefix)})
 
 
 @app.route("/api/add_transaction", methods=["POST"])
@@ -363,9 +400,18 @@ def add_transaction():
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
 
-    transaction_id = generate_readable_id("inbound_transaction", "INB") if data.get("transaction_type") == "inbound" else generate_readable_id("outbound_transaction", "OUT")
+    if data.get("transaction_type") == "inbound":
+        transaction_id = data.get("payment_gateway_transaction_id", "")
+        if not transaction_id:
+            return jsonify({"success": False, "errors": ["payment_gateway_transaction_id is required for inbound transactions"]}), 400
+    else:
+        transaction_id = data.get("transaction_id", "")
+        if not transaction_id:
+            return jsonify({"success": False, "errors": ["transaction_id is required. Use Generate ID."]}), 400
+
     document = {
         "transaction_id": transaction_id,
+        "internal_transaction_key": generate_readable_id("internal_transaction_key", "INB" if data.get("transaction_type") == "inbound" else "OUT"),
         "order_id": data.get("order_id", ""),
         "customer_id": data.get("customer_id", ""),
         "vendor_id": data.get("vendor_id", ""),
@@ -379,7 +425,10 @@ def add_transaction():
         "created_at": datetime.now(timezone.utc),
         "notes": data.get("notes", ""),
     }
-    get_db().transactions.insert_one(document)
+    try:
+        get_db().transactions.insert_one(document)
+    except DuplicateKeyError:
+        return jsonify({"success": False, "errors": ["transaction_id already exists"]}), 409
 
     return jsonify({"success": True, "message": "Transaction added successfully", "transaction_id": transaction_id})
 
@@ -464,19 +513,86 @@ def add_transaction_issue():
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
 
-    issue_id = generate_readable_id("transaction_issue", "ISSUE")
-    get_db().transaction_issues.insert_one(
-        {
-            "issue_id": issue_id,
-            "transaction_id": data["transaction_id"],
-            "issue_type": data["issue_type"],
-            "description": data["description"],
-            "reported_by": data["reported_by"],
-            "status": status,
-            "created_at": datetime.now(timezone.utc),
-        }
-    )
+    issue_id = data.get("issue_id", "")
+    if not issue_id:
+        return jsonify({"success": False, "errors": ["issue_id is required. Use Generate ID."]}), 400
+    try:
+        get_db().transaction_issues.insert_one(
+            {
+                "issue_id": issue_id,
+                "internal_record_id": f"IIS-{uuid4().hex[:12].upper()}",
+                "transaction_id": data["transaction_id"],
+                "issue_type": data["issue_type"],
+                "description": data["description"],
+                "reported_by": data["reported_by"],
+                "status": status,
+                "created_at": datetime.now(timezone.utc),
+            }
+        )
+    except DuplicateKeyError:
+        return jsonify({"success": False, "errors": ["issue_id already exists. Generate a new ID."]}), 409
     return jsonify({"success": True, "message": "Transaction issue created", "issue_id": issue_id})
+
+
+@app.route("/api/export/<module_name>")
+def export_module(module_name):
+    collection_map = {
+        "capex": ("capex_expenses", {"_id": 0, "internal_record_id": 0}),
+        "opex": ("opex_expenses", {"_id": 0, "internal_record_id": 0}),
+        "inbound": ("transactions", {"_id": 0, "internal_transaction_key": 0}),
+        "outbound": ("transactions", {"_id": 0, "internal_transaction_key": 0}),
+    }
+    if module_name not in collection_map:
+        return jsonify({"success": False, "message": "Unsupported export module"}), 400
+
+    collection_name, projection = collection_map[module_name]
+    query = {}
+    if module_name in {"inbound", "outbound"}:
+        query["transaction_type"] = module_name
+
+    rows = list(get_db()[collection_name].find(query, projection).sort("created_at", -1))
+    if not rows:
+        rows = [{"message": "No data available"}]
+
+    df = pd.DataFrame(rows)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=module_name.upper())
+    output.seek(0)
+
+    filename = f"{module_name}_records_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
+    create_system_log(
+        action_type="download",
+        module_name=module_name.upper(),
+        user_id=request.args.get("user_id", "unknown"),
+        download_type="excel",
+        file_name=filename,
+        details=f"Downloaded {module_name.upper()} Excel export",
+    )
+    return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/api/system_logs")
+def system_logs():
+    query = {}
+    module_name = (request.args.get("module_name") or "").strip()
+    action_type = (request.args.get("action_type") or "").strip()
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+
+    if module_name:
+        query["module_name"] = module_name
+    if action_type:
+        query["action_type"] = action_type
+    if start_date or end_date:
+        query["timestamp"] = {}
+        if start_date:
+            query["timestamp"]["$gte"] = datetime.fromisoformat(f"{start_date}T00:00:00+00:00")
+        if end_date:
+            query["timestamp"]["$lte"] = datetime.fromisoformat(f"{end_date}T23:59:59+00:00")
+
+    rows = list(get_db().system_logs.find(query).sort("timestamp", -1))
+    return jsonify([serialize_doc(r) for r in rows])
 
 
 @app.route("/api/get_transaction_issues")
