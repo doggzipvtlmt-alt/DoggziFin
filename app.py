@@ -3,13 +3,14 @@ from io import BytesIO
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 
-import pandas as pd
+from openpyxl import Workbook
 from bson import ObjectId
 from flask import Flask, jsonify, make_response, render_template, request, send_file
 from pymongo.errors import DuplicateKeyError
 from pymongo import MongoClient, ReturnDocument
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
 DEFAULT_MONGO_URI = (
@@ -680,10 +681,17 @@ def export_module(module_name):
     if not rows:
         rows = [{"message": "No data available"}]
 
-    df = pd.DataFrame(rows)
     output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name=module_name.upper())
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = module_name.upper()[:31]
+
+    headers = list(rows[0].keys())
+    worksheet.append(headers)
+    for row in rows:
+        worksheet.append([row.get(header, "") for header in headers])
+
+    workbook.save(output)
     output.seek(0)
 
     filename = f"{module_name}_records_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
