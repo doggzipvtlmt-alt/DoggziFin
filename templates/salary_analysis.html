@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doggzi Salary Analysis</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/attendance.css">
+</head>
+<body class="attendance-body">
+  <main class="attendance-terminal">
+    <header class="terminal-header">
+      <h1>Salary Analysis</h1>
+      <p>Weekly attendance based salary projection.</p>
+    </header>
+
+    <section class="stats-grid salary-cards" id="salaryCards"></section>
+
+    <section class="weekly-summary">
+      <h3>Weekly Salary Table</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Employee Name</th>
+              <th>Total Days Worked</th>
+              <th>Total Hours Worked</th>
+              <th>Extra Hours</th>
+              <th>Estimated Salary</th>
+            </tr>
+          </thead>
+          <tbody id="salaryTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="weekly-summary">
+      <h3>Hours Worked (Bar Chart)</h3>
+      <div id="hoursChart" class="hours-chart"></div>
+    </section>
+  </main>
+
+  <script src="/static/attendance.js"></script>
+</body>
+</html>

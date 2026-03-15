@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doggzi Attendance Terminal</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/attendance.css">
+</head>
+<body class="attendance-body">
+  <main class="attendance-terminal">
+    <header class="terminal-header">
+      <h1>Attendance Terminal</h1>
+      <p>Tap your name and mark check-in / check-out.</p>
+    </header>
+
+    <section class="employee-grid" id="employeeGrid">
+      {% for employee in employees %}
+      <article class="employee-card" data-employee-id="{{ employee.employee_id }}">
+        <div>
+          <h2>{{ employee.employee_name }}</h2>
+          <p>ID: {{ employee.employee_id }}</p>
+        </div>
+        <div class="actions">
+          <button class="btn checkin" data-action="check-in">Check-In</button>
+          <button class="btn checkout" data-action="check-out">Check-Out</button>
+        </div>
+        <p class="status" id="status-{{ employee.employee_id }}">Waiting for action</p>
+      </article>
+      {% endfor %}
+    </section>
+
+    <section class="weekly-summary">
+      <h3>Weekly Progress</h3>
+      <p class="week-range" id="weekRange"></p>
+      <div id="weeklyProgressRows"></div>
+    </section>
+  </main>
+
+  <script>
+    window.WEEKLY_TARGET_HOURS = {{ weekly_target_hours }};
+  </script>
+  <script src="/static/attendance.js"></script>
+</body>
+</html>
