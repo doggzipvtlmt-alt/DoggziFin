@@ -1,11 +1,11 @@
 import os
 from io import BytesIO
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from bson import ObjectId
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, make_response, render_template, request, send_file
 from pymongo.errors import DuplicateKeyError
 from pymongo import MongoClient, ReturnDocument
 
@@ -26,6 +26,9 @@ REQUIRED_EXPENSE_FIELDS = ["category", "description", "amount", "department", "d
 ALLOWED_TRANSACTION_TYPES = {"inbound", "outbound"}
 ALLOWED_TRANSACTION_STATUS = {"completed", "pending", "failed", "refunded"}
 ALLOWED_ISSUE_STATUS = {"open", "investigating", "resolved"}
+HALF_DAY_HOURS = 6
+FULL_DAY_HOURS = 8
+WEEKLY_TARGET_HOURS = 40
 
 
 def get_db():
@@ -41,7 +44,17 @@ def get_db():
 
 def init_collections(db):
     existing = set(db.list_collection_names())
-    for name in ["capex_expenses", "opex_expenses", "transactions", "transaction_issues", "system_logs", "id_counters"]:
+    for name in [
+        "capex_expenses",
+        "opex_expenses",
+        "transactions",
+        "transaction_issues",
+        "system_logs",
+        "id_counters",
+        "employees",
+        "attendance_records",
+        "salary_analysis",
+    ]:
         if name not in existing:
             db.create_collection(name)
 
@@ -51,6 +64,9 @@ def init_collections(db):
     db.transactions.create_index("internal_transaction_key", unique=True, partialFilterExpression={"internal_transaction_key": {"$exists": True}})
     db.transaction_issues.create_index("issue_id", unique=True, partialFilterExpression={"issue_id": {"$exists": True}})
     db.system_logs.create_index("log_id", unique=True, partialFilterExpression={"log_id": {"$exists": True}})
+    db.employees.create_index("employee_id", unique=True, partialFilterExpression={"employee_id": {"$exists": True}})
+    db.attendance_records.create_index([("employee_id", 1), ("date", 1)], unique=True)
+    db.salary_analysis.create_index([("employee_id", 1), ("week_start", 1)], unique=True)
 
 
 def generate_readable_id(counter_key, prefix):
@@ -99,6 +115,88 @@ def parse_amount(value):
     except (ValueError, TypeError):
         return None
     return amount if amount > 0 else None
+
+
+def compute_attendance_metrics(check_in_time, check_out_time):
+    working_hours = max((check_out_time - check_in_time).total_seconds() / 3600, 0)
+    if working_hours < HALF_DAY_HOURS:
+        day_count = 0
+        extra_hours = 0
+    elif working_hours < FULL_DAY_HOURS:
+        day_count = 0.5
+        extra_hours = 0
+    else:
+        day_count = 1
+        extra_hours = round(working_hours - FULL_DAY_HOURS, 2)
+    return round(working_hours, 2), day_count, extra_hours
+
+
+def week_window(date_value):
+    week_start = date_value - timedelta(days=date_value.weekday())
+    week_end = week_start + timedelta(days=6)
+    return week_start, week_end
+
+
+def sync_salary_analysis(employee_id, employee_name, daily_wage, hourly_wage, for_date):
+    db = get_db()
+    week_start, week_end = week_window(for_date)
+    records = list(
+        db.attendance_records.find(
+            {
+                "employee_id": employee_id,
+                "date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()},
+                "check_out_time": {"$ne": None},
+            }
+        )
+    )
+
+    total_days_worked = round(sum(float(r.get("day_count", 0)) for r in records), 2)
+    total_hours_worked = round(sum(float(r.get("working_hours", 0)) for r in records), 2)
+    total_extra_hours = round(sum(float(r.get("extra_hours", 0)) for r in records), 2)
+    daily_salary = round(total_days_worked * float(daily_wage), 2)
+    extra_salary = round(total_extra_hours * float(hourly_wage), 2)
+    total_salary = round(daily_salary + extra_salary, 2)
+
+    db.salary_analysis.update_one(
+        {"employee_id": employee_id, "week_start": week_start.isoformat()},
+        {
+            "$set": {
+                "employee_id": employee_id,
+                "employee_name": employee_name,
+                "week_start": week_start.isoformat(),
+                "week_end": week_end.isoformat(),
+                "total_days_worked": total_days_worked,
+                "total_hours_worked": total_hours_worked,
+                "extra_hours": total_extra_hours,
+                "daily_wage": float(daily_wage),
+                "hourly_wage": float(hourly_wage),
+                "estimated_salary": total_salary,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+        upsert=True,
+    )
+
+
+@app.before_request
+def enforce_attendance_terminal_mode():
+    if request.cookies.get("terminal_mode") != "attendance":
+        return None
+
+    allowed_paths = (
+        "/attendance",
+        "/attendance/salary-analysis",
+        "/attendance/access-restricted",
+        "/api/attendance",
+        "/static/",
+        "/favicon.ico",
+    )
+    if request.path.startswith(allowed_paths):
+        return None
+
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "message": "Access restricted. Attendance terminal only."}), 403
+    return render_template("access_restricted.html"), 403
 
 
 def validate_expense(data):
@@ -260,6 +358,34 @@ def transaction_issues_page():
 @app.route("/org-chart")
 def org_chart_page():
     return render_template("org_chart.html")
+
+
+@app.route("/attendance")
+def attendance_page():
+    db = get_db()
+    employees = list(db.employees.find({}, {"_id": 0}).sort("employee_name", 1))
+    if not employees:
+        seed = [
+            {"employee_id": "EMP-001", "employee_name": "Rahul", "daily_wage": 1500, "hourly_wage": 200, "is_active": True},
+            {"employee_id": "EMP-002", "employee_name": "Ananya", "daily_wage": 1400, "hourly_wage": 180, "is_active": True},
+            {"employee_id": "EMP-003", "employee_name": "Vivek", "daily_wage": 1600, "hourly_wage": 220, "is_active": True},
+        ]
+        db.employees.insert_many(seed)
+        employees = seed
+
+    response = make_response(render_template("attendance.html", employees=employees, weekly_target_hours=WEEKLY_TARGET_HOURS))
+    response.set_cookie("terminal_mode", "attendance", httponly=True, samesite="Lax")
+    return response
+
+
+@app.route("/attendance/salary-analysis")
+def attendance_salary_analysis_page():
+    return render_template("salary_analysis.html")
+
+
+@app.route("/attendance/access-restricted")
+def attendance_access_restricted_page():
+    return render_template("access_restricted.html"), 403
 
 
 @app.route("/api/add_capex", methods=["POST"])
@@ -611,6 +737,142 @@ def update_transaction_issue_status(issue_id):
     if result.matched_count == 0:
         return jsonify({"success": False, "message": "Issue not found"}), 404
     return jsonify({"success": True, "message": "Issue status updated"})
+
+
+@app.route("/api/attendance/check-in", methods=["POST"])
+def attendance_check_in():
+    data = request.json or {}
+    employee_id = (data.get("employee_id") or "").strip()
+    if not employee_id:
+        return jsonify({"success": False, "message": "employee_id is required"}), 400
+
+    db = get_db()
+    employee = db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    if not employee:
+        return jsonify({"success": False, "message": "Employee not found"}), 404
+
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    existing = db.attendance_records.find_one({"employee_id": employee_id, "date": today})
+    if existing and existing.get("check_in_time"):
+        return jsonify({"success": False, "message": "Already checked in for today"}), 409
+
+    db.attendance_records.update_one(
+        {"employee_id": employee_id, "date": today},
+        {
+            "$set": {
+                "employee_id": employee["employee_id"],
+                "employee_name": employee["employee_name"],
+                "date": today,
+                "check_in_time": now,
+                "check_out_time": None,
+                "working_hours": 0,
+                "day_count": 0,
+                "extra_hours": 0,
+                "daily_wage": float(employee.get("daily_wage", 0)),
+                "hourly_wage": float(employee.get("hourly_wage", 0)),
+                "updated_at": now,
+            }
+        },
+        upsert=True,
+    )
+    return jsonify({"success": True, "message": f"{employee['employee_name']} checked in", "check_in_time": now.isoformat()})
+
+
+@app.route("/api/attendance/check-out", methods=["POST"])
+def attendance_check_out():
+    data = request.json or {}
+    employee_id = (data.get("employee_id") or "").strip()
+    if not employee_id:
+        return jsonify({"success": False, "message": "employee_id is required"}), 400
+
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    record = db.attendance_records.find_one({"employee_id": employee_id, "date": today})
+    if not record or not record.get("check_in_time"):
+        return jsonify({"success": False, "message": "Employee has not checked in"}), 400
+    if record.get("check_out_time"):
+        return jsonify({"success": False, "message": "Already checked out for today"}), 409
+
+    working_hours, day_count, extra_hours = compute_attendance_metrics(record["check_in_time"], now)
+
+    db.attendance_records.update_one(
+        {"_id": record["_id"]},
+        {
+            "$set": {
+                "check_out_time": now,
+                "working_hours": working_hours,
+                "day_count": day_count,
+                "extra_hours": extra_hours,
+                "updated_at": now,
+            }
+        },
+    )
+
+    sync_salary_analysis(
+        employee_id=record["employee_id"],
+        employee_name=record.get("employee_name", "Unknown"),
+        daily_wage=record.get("daily_wage", 0),
+        hourly_wage=record.get("hourly_wage", 0),
+        for_date=now.date(),
+    )
+
+    return jsonify(
+        {
+            "success": True,
+            "message": f"{record.get('employee_name', 'Employee')} checked out",
+            "working_hours": working_hours,
+            "day_count": day_count,
+            "extra_hours": extra_hours,
+            "check_out_time": now.isoformat(),
+        }
+    )
+
+
+@app.route("/api/attendance/weekly-progress")
+def attendance_weekly_progress():
+    db = get_db()
+    now_date = datetime.now(timezone.utc).date()
+    week_start, week_end = week_window(now_date)
+
+    employees = list(db.employees.find({}, {"_id": 0, "employee_id": 1, "employee_name": 1}).sort("employee_name", 1))
+    data = []
+    for employee in employees:
+        records = list(
+            db.attendance_records.find(
+                {
+                    "employee_id": employee["employee_id"],
+                    "date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()},
+                },
+                {"_id": 0, "working_hours": 1},
+            )
+        )
+        worked_hours = round(sum(float(r.get("working_hours", 0)) for r in records), 2)
+        remaining_hours = round(max(WEEKLY_TARGET_HOURS - worked_hours, 0), 2)
+        data.append(
+            {
+                "employee_id": employee["employee_id"],
+                "employee_name": employee["employee_name"],
+                "worked_hours": worked_hours,
+                "remaining_hours": remaining_hours,
+            }
+        )
+
+    return jsonify({"success": True, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(), "weekly_progress": data})
+
+
+@app.route("/api/attendance/salary-analysis")
+def attendance_salary_analysis():
+    db = get_db()
+    now_date = datetime.now(timezone.utc).date()
+    week_start, _ = week_window(now_date)
+
+    rows = list(db.salary_analysis.find({"week_start": week_start.isoformat()}, {"_id": 0}).sort("employee_name", 1))
+    for row in rows:
+        row["estimated_salary"] = round(float(row.get("estimated_salary", 0)), 2)
+
+    return jsonify({"success": True, "week_start": week_start.isoformat(), "salary_analysis": rows})
 
 
 if __name__ == "__main__":
